@@ -1,10 +1,5 @@
+logs/
+data/
 __pycache__/
 *.pyc
-.DS_Store
-logs/
-dags/data/raw/*
-dags/data/processed/*
-data/*
-!dags/data/raw/sample_FD001.txt
-generate_aero_history.py
-generate_history.py
+.ipynb_checkpoints/
