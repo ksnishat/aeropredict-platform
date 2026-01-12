@@ -1,132 +1,141 @@
-x-airflow-common: &airflow-common
-  image: apache/airflow:2.7.1-python3.10  # Back to official image (No building)
-  env_file: .env
-  volumes:
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-    - ./data:/opt/airflow/data
-  depends_on:
-    - postgres
-  environment:
-    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-    - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
-    - AIRFLOW__CORE__LOAD_EXAMPLES=false
-    - AIRFLOW_UID=50000
-    - AWS_ACCESS_KEY_ID=minioadmin
-    - AWS_SECRET_ACCESS_KEY=minioadmin
-    - MLFLOW_TRACKING_URI=http://mlflow:5000
+version: '3.8'
 
 services:
-  # --- NEW: The Data Science Cockpit ---
+  # ==========================================
+  # 1. THE "LAB" (Jupyter + Spark + GPU)
+  # ==========================================
   jupyter:
-    image: jupyter/pyspark-notebook:latest
-    container_name: aero_jupyter
+    build: 
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.jupyter
+    image: aeropredict-jupyter:gpu-latest
+    container_name: aeropredict_lab
     ports:
-      - "8888:8888"
-    environment:
-      - JUPYTER_TOKEN=admin  # Password to login
-      - SPARK_MASTER=spark://spark-master:7077
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - "8888:8888"  # Jupyter Lab
+      - "4040:4040"  # Spark UI
     volumes:
-      - ./:/home/jovyan/work  # Maps your whole project folder to Jupyter
-    depends_on:
-      - spark-master
+      - ./:/home/jovyan/work
+      - ./data:/home/jovyan/work/data
+      - ./notebooks:/home/jovyan/work/notebooks
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - GRANT_SUDO=yes
+      - NB_UID=1000
+      - NB_GID=100
+      # 👇 Connection details for MLOps
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: start-notebook.sh --NotebookApp.token=''
 
+  # ==========================================
+  # 2. AIRFLOW (Orchestration Layer)
+  # ==========================================
   postgres:
     image: postgres:13
-    container_name: aero_postgres
+    container_name: airflow_postgres
     environment:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
-    ports:
-      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
       retries: 5
 
-  minio:
-    image: minio/minio
-    container_name: aero_minio
-    command: server /data --console-address ":9001"
-    environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+  airflow-webserver:
+    image: apache/airflow:2.7.1
+    container_name: airflow_webserver
+    command: webserver
+    restart: always
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
-      - minio_data:/data
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
 
+  airflow-scheduler:
+    image: apache/airflow:2.7.1
+    container_name: airflow_scheduler
+    command: scheduler
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+
+  # ==========================================
+  # 3. MLFLOW (Experiment Tracking)
+  # ==========================================
+  # ==========================================
+  # 3. MLFLOW (Experiment Tracking)
+  # ==========================================
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.7.1
-    container_name: aero_mlflow
-    command: >
-      mlflow server
-      --backend-store-uri postgresql://airflow:airflow@postgres/airflow
-      --default-artifact-root s3://mlflow/
-      --host 0.0.0.0
+    # 👇 CHANGE: Build from our new file instead of downloading a broken image
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.mlflow
+    container_name: mlflow_server
+    restart: always
     ports:
       - "5000:5000"
     environment:
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
     depends_on:
-      - postgres
       - minio
-
-  airflow-webserver:
-    <<: *airflow-common
-    container_name: aero_webserver
-    command: webserver
+    command: >
+      mlflow server 
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root s3://mlflow/
+      --host 0.0.0.0
+  # ==========================================
+  # 4. MINIO (Model Artifact Storage - S3)
+  # ==========================================
+  minio:
+    image: minio/minio
+    container_name: airflow_minio
     ports:
-      - "8080:8080"
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
-      timeout: 30s
-      retries: 5
-
-  airflow-scheduler:
-    <<: *airflow-common
-    container_name: aero_scheduler
-    command: scheduler
-
-  airflow-init:
-    <<: *airflow-common
-    container_name: aero_init
-    command: version
-    environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - _AIRFLOW_DB_UPGRADE=true
-      - _AIRFLOW_WWW_USER_CREATE=true
-      - _AIRFLOW_WWW_USER_USERNAME=admin
-      - _AIRFLOW_WWW_USER_PASSWORD=admin
-    depends_on:
-      - postgres
-
-  spark-master:
-    image: bitnamilegacy/spark:3.5.1
-    container_name: aero_spark_master
-    environment:
-      - SPARK_MODE=master
-    ports:
-      - "8081:8081"
-      - "7077:7077"
-
-  spark-worker:
-    image: bitnamilegacy/spark:3.5.1
-    container_name: aero_spark_worker
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=2G
-    depends_on:
-      - spark-master
+      timeout: 20s
+      retries: 3
 
 volumes:
+  postgres_data:
   minio_data:

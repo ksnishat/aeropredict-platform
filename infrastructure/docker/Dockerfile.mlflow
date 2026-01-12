@@ -1,0 +1,11 @@
+# Use official lightweight Python
+FROM python:3.9-slim
+
+# Install curl (for healthchecks)
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Install MLflow and the AWS library (boto3) needed to talk to MinIO
+RUN pip install mlflow boto3 psycopg2-binary
+
+# Start the server
+CMD ["mlflow", "server", "--host", "0.0.0.0"]
