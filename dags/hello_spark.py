@@ -6,8 +6,8 @@ import sys
 def check_spark():
     import pyspark
     import mlflow
-    print(f"✅ SUCCESS! Spark version {pyspark.__version__} is ready.")
-    print(f"✅ SUCCESS! MLflow version {mlflow.__version__} is ready.")
+    print(f" SUCCESS! Spark version {pyspark.__version__} is ready.")
+    print(f" SUCCESS! MLflow version {mlflow.__version__} is ready.")
 
 with DAG(
     dag_id='01_spark_check',
