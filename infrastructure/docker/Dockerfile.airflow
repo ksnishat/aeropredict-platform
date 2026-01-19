@@ -1,16 +1,14 @@
-# Save as: infrastructure/docker/Dockerfile.airflow
+# FILE: infrastructure/docker/Dockerfile.airflow
 FROM apache/airflow:2.7.1
 
 USER root
-# Install gcc (needed for some python libraries)
 RUN apt-get update && \
     apt-get install -y gcc && \
     rm -rf /var/lib/apt/lists/*
 
 USER airflow
 
-# Install the Science Stack
-# We use the CPU version of PyTorch here to keep the Airflow Scheduler fast and light.
+# Install PyTorch (CPU) + Scikit-Learn + PDF Library + API LIBS ✅
 RUN pip install --no-cache-dir \
     torch \
     torchvision \
@@ -23,4 +21,8 @@ RUN pip install --no-cache-dir \
     mlflow \
     boto3 \
     requests \
-    pypdf
+    pypdf \
+    fastapi \
+    uvicorn \
+    pydantic \
+    python-multipart
