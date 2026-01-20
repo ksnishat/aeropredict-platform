@@ -1,85 +1,33 @@
 # ✈️ AeroPredict: GenAI-Powered Predictive Maintenance Platform
 
-**AeroPredict** is a comprehensive MLOps and GenAI platform designed to predict the Remaining Useful Life (RUL) of turbofan engines using the NASA C-MAPSS dataset. It integrates a deep learning LSTM model for time-series forecasting with a RAG-powered Llama 3.2 agent that provides expert-level maintenance diagnostics grounded in technical NASA manuals.
+**AeroPredict** is a production-grade MLOps and Generative AI platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It simulates a modern industrial AI system by integrating deep learning for time-series forecasting with a RAG-powered LLM agent that generates automated, physics-informed maintenance reports.
+
+The system is built on the NASA C-MAPSS dataset and orchestrates the entire lifecycle—from data ingestion to technician reporting—using Apache Airflow, MLflow, and Docker.
 
 ## 🚀 Key Features
 
-- **🔮 RUL Forecasting Engine:** Utilizes a sequence-to-one LSTM architecture to process multivariate time-series sensor data and forecast engine health.
+- **🔮 Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate sensor trajectories to predict RUL with an asymmetric safety-first loss function.
 
-- **🧠 GenAI Diagnostics (RAG):** A localized Llama 3.2 agent reads the Damage Propagation Modeling manual to identify degradation modes like Efficiency Loss and Flow Loss.
+- **🧠 GenAI Diagnostics (RAG):** A local Llama 3.2 agent (via Ollama) indexes technical manuals to explain failure modes (e.g., "HPC Efficiency Loss") based on real-time telemetry.
 
-- **📡 End-to-End Orchestration:** Managed by Apache Airflow, the pipeline automates ingestion, preprocessing, training, and report generation.
+- **📡 Automated Pipelines:** Apache Airflow DAGs manage the end-to-end workflow: Ingestion → Preprocessing → Training → Evaluation → Deployment.
 
-- **📊 Observability Stack:** Prometheus and Grafana provide real-time monitoring of container health and hardware utilization.
+- **🖥️ Technician Dashboard:** A Streamlit interface connected to a FastAPI backend allows engineers to upload sensor logs and view instant predictions and AI-generated repair advice.
 
-- **🖥️ Technician Dashboard:** A Streamlit UI connected via FastAPI enables real-time queries, health index visualization, and GenAI report rendering.
-
-## 📊 Data Acquisition & Management
-
-### 1. Dataset Source
-
-The platform is optimized for the FD001 subset of the NASA C-MAPSS dataset.
-
-- **Download:** [NASA CMAPSS Jet Engine Data (Kaggle)](https://www.kaggle.com/datasets/behrad3d/nasa-cmaps-sensor-data)
-- **Required Training Files:** `train_FD001.txt`, `test_FD001.txt`, and `RUL_FD001.txt`
-- **GenAI Reference:** `Damage_Propagation_Modeling.pdf` (Technical Manual for RAG)
-
-### 2. Setup Guide
-
-The Docker containers map your local `data/` directory to `/opt/airflow/data`. Follow this directory structure:
-
-```bash
-# Create local hierarchy
-mkdir -p data/raw data/processed
-
-# Move C-MAPSS files and NASA manual into raw folder
-mv ~/Downloads/*.txt ./data/raw/
-mv ~/Downloads/Damage_Propagation_Modeling.pdf ./data/raw/
-```
-
-***
+- **📊 Full Observability:** Prometheus and Grafana monitor system health, container metrics, and inference latency in real-time.
 
 ## 🏗️ Architecture
 
-AeroPredict uses a modular microservices architecture orchestrated by **Apache Airflow** and deployed via **Docker Compose**. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+The system follows a microservices architecture orchestrated by Docker Compose:
 
-### High-Level Workflow
-
-| Stage            | Description |
-|------------------|-------------|
-| **Ingestion**    | Airflow DAG watches `data/raw` for C-MAPSS text files and the NASA manual, then triggers preprocessing tasks.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Preprocessing**| `data_preprocessing.py` normalizes sensor channels, builds sliding windows, and splits train/validation sets.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Training**     | `train_model.py` trains an LSTM model to predict RUL cycles, logging metrics, parameters, and artifacts to MLflow / MinIO.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Inference**    | A **FastAPI** service loads the best model checkpoint and exposes `/predict` and `/diagnostics` endpoints.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **GenAI (RAG)**  | If predicted RUL crosses a critical threshold, **Llama 3.2** is invoked to interpret degradation modes from the manual and generate a textual report.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Dashboard**    | **Streamlit** consumes the FastAPI endpoints, visualizes health index and RUL, and renders GenAI maintenance reports to technicians.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Monitoring**   | **Prometheus** scrapes metrics, **Grafana** dashboards display container health, GPU/CPU usage, and request latencies.  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-
-### Core Components
-
-- **Orchestration – Airflow**
-  - DAGs for ingestion → preprocessing → training → evaluation → deployment → reporting.  
-  - Volume mapping: host `data/` → `/opt/airflow/data`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-
-- **Model Training – LSTM**
-  - PyTorch LSTM network on sensor response surfaces to forecast remaining cycles.  
-  - Custom loss implementing an **asymmetric scoring function** that penalizes **late predictions more than early ones** to prioritize safety. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-
-- **GenAI Diagnostics – RAG**
-  - `rag_inference.py` builds a document index over the *Damage Propagation Modeling* PDF using `pypdf`.  
-  - When RUL is **critical**, the pipeline extracts sections related to modes like **Efficiency Loss** and **Flow Loss** and feeds them as context to Llama 3.2 to generate an engineering-style diagnostic report. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-
-- **Inference – FastAPI**
-  - `api.py` exposes endpoints for:
-    - RUL prediction for a given engine trajectory.
-    - Health index computation and visualization metadata.
-    - RAG-based text report generation when requested by the dashboard. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-
-- **Dashboard – Streamlit**
-  - `app.py` provides:
-    - File upload or engine selection from test set.
-    - RUL trend plots, health index curves, and failure threshold markers.
-    - Embedded GenAI report viewer for technician decisions. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+| Service | Technology | Role |
+|---------|-----------|------|
+| **Orchestrator** | Apache Airflow | Manages DAGs and triggers pipeline tasks. |
+| **Model Training** | PyTorch + MLflow | Trains the LSTM and tracks experiments/artifacts. |
+| **GenAI Engine** | Ollama (Llama 3.2) | Serves the Large Language Model for RAG. |
+| **Backend API** | FastAPI | Exposes model inference and RAG logic via REST endpoints. |
+| **Frontend UI** | Streamlit | Provides the interactive dashboard for end-users. |
+| **Monitoring** | Grafana + Prometheus | Visualizes hardware usage and system health. |
 
 ***
 
