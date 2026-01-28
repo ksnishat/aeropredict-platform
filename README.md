@@ -33,12 +33,12 @@ The system follows a microservices architecture orchestrated by Docker Compose:
 
 ## 🧠 Diagnostic Methodology
 
-AeroPredict combines data-driven RUL modeling with a physics-informed health index and safety-oriented scoring. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+AeroPredict combines data-driven RUL modeling with a physics-informed health index and safety-oriented scoring.
 
 ### 1. Asymmetric RUL Scoring
 
-- The system uses an **asymmetric scoring function** where **late predictions** (predicting failure *after* it occurs) incur significantly higher penalties than **early predictions**. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-- This aligns optimization with **flight safety**, pushing the LSTM to err on the safe side when uncertainty is high. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+- The system uses an **asymmetric scoring function** where **late predictions** (predicting failure *after* it occurs) incur significantly higher penalties than **early predictions**.
+- This aligns optimization with **flight safety**, pushing the LSTM to err on the safe side when uncertainty is high.
 
 ### 2. Health Index \(h(t)\)
 
@@ -46,16 +46,16 @@ AeroPredict combines data-driven RUL modeling with a physics-informed health ind
   - Fan
   - High-Pressure Compressor (HPC)
   - High-Pressure Turbine (HPT)
-  - Exhaust Gas Temperature (EGT) [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
-- Intuitively, the engine health is limited by the **worst-performing margin**, so taking the minimum captures the most critical bottleneck at each time step. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+  - Exhaust Gas Temperature (EGT)
+- Intuitively, the engine health is limited by the **worst-performing margin**, so taking the minimum captures the most critical bottleneck at each time step.
 
 ### 3. Failure Criterion and RAG Trigger
 
-- When \(h(t)\) crosses a configured threshold (e.g., reaches **zero** in normalized units), the system declares that a **failure criterion** is met. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+- When \(h(t)\) crosses a configured threshold (e.g., reaches **zero** in normalized units), the system declares that a **failure criterion** is met.
 - At this point:
   - The last RUL prediction and trajectory context are frozen.
   - The RAG pipeline queries the *Damage Propagation Modeling* manual for matching degradation patterns.
-  - Llama 3.2 generates a final **maintenance and root-cause report** (e.g., “efficiency loss in HPC with associated EGT drift”). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+  - Llama 3.2 generates a final **maintenance and root-cause report** (e.g., "efficiency loss in HPC with associated EGT drift").
 
 ***
 
@@ -67,7 +67,7 @@ Ensure the following are installed on your host machine:
 
 - Docker & Docker Compose
 - Python 3.10 (for local development)
-- **Ollama** (for hosting Llama 3.2 on the host, reachable from Docker) [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+- **Ollama** (for hosting Llama 3.2 on the host, reachable from Docker)
 
 Create the base project structure:
 
@@ -78,18 +78,18 @@ mkdir -p data/raw data/processed logs plugins tests
 
 ### 2. Dataset Acquisition
 
-After downloading the NASA C-MAPSS files and the manual, move them to `data/raw` so that Airflow and the ML pipeline can access them via the shared volume. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+After downloading the NASA C-MAPSS files and the manual, move them to `data/raw` so that Airflow and the ML pipeline can access them via the shared volume.
 
 ```bash
 # Move raw C-MAPSS text files so the pipeline can access them
 mv data/raw/*.txt data/
 ```
 
-(If starting fresh, follow the directory setup steps in the Data Management section.) [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+(If starting fresh, follow the directory setup steps in the Data Management section.)
 
 ### 3. Setup the GenAI “Brain” (Ollama)
 
-The GenAI module requires **Llama 3.2** running from the host, reachable at `OLLAMA_HOST=0.0.0.0` so containers can connect. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+The GenAI module requires **Llama 3.2** running from the host, reachable at `OLLAMA_HOST=0.0.0.0` so containers can connect.
 
 ```bash
 # Pull the required model
@@ -101,14 +101,14 @@ OLLAMA_HOST=0.0.0.0 ollama serve
 
 ### 4. Build and Launch the Platform
 
-Use Docker Compose to build the custom images (Airflow, API, UI, monitoring stack) and start everything in detached mode. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Use Docker Compose to build the custom images (Airflow, API, UI, monitoring stack) and start everything in detached mode.
 
 ```bash
 # Build custom images and start the microservices
 docker compose up --build -d
 ```
 
-Once containers are healthy, access services using the URLs below. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Once containers are healthy, access services using the URLs below.
 
 ***
 
@@ -116,23 +116,23 @@ Once containers are healthy, access services using the URLs below. [ppl-ai-file-
 
 | Service     | URL                    | Credentials (User / Pass) |
 |-------------|------------------------|----------------------------|
-| **Airflow** | http://localhost:8080  | `airflow / airflow`  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Streamlit UI** | http://localhost:8501 | N/A (public)  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **Grafana** | http://localhost:3000  | `airflow / airflow`  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **MLflow**  | http://localhost:5000  | N/A (public)  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
-| **FastAPI** | http://localhost:8000  | N/A (OpenAPI docs at `/docs`)  [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md) |
+| **Airflow** | http://localhost:8080  | `airflow / airflow` |
+| **Streamlit UI** | http://localhost:8501 | N/A (public) |
+| **Grafana** | http://localhost:3000  | `airflow / airflow` |
+| **MLflow**  | http://localhost:5000  | N/A (public) |
+| **FastAPI** | http://localhost:8000  | N/A (OpenAPI docs at `/docs`) |
 
 Typical workflow:
 
 - Start Airflow, unpause the main DAG (e.g., `aeropredict_pipeline`).  
 - Wait for preprocessing and training runs to complete.  
-- Open the Streamlit UI, select an engine or upload a test trajectory, view predicted RUL and generated maintenance report. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+- Open the Streamlit UI, select an engine or upload a test trajectory, view predicted RUL and generated maintenance report.
 
 ***
 
 ## 🧪 Running Tests
 
-Unit tests validate data preprocessing assumptions, RUL label generation, and API contracts. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Unit tests validate data preprocessing assumptions, RUL label generation, and API contracts.
 
 Run tests from the API container:
 
@@ -141,7 +141,7 @@ Run tests from the API container:
 docker exec -it aeropredict_api python -m unittest discover tests/
 ```
 
-Add more tests under `tests/` for new models, scoring variants, or endpoints as the project evolves. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Add more tests under `tests/` for new models, scoring variants, or endpoints as the project evolves.
 
 ***
 
@@ -172,18 +172,18 @@ aeropredict-platform/
 
 ## 📈 Monitoring & Observability
 
-- **Prometheus** scrapes metrics from the API, Airflow, and system exporters (e.g., Node Exporter). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+- **Prometheus** scrapes metrics from the API, Airflow, and system exporters (e.g., Node Exporter).
 - **Grafana** dashboards track:
   - RUL inference latency and throughput.
   - Airflow task duration and failure rates.
-  - Container CPU, memory, and GPU utilization where applicable. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+  - Container CPU, memory, and GPU utilization where applicable.
 
-Monitoring helps detect data drift (e.g., abnormal sensor distributions) and infrastructure bottlenecks before they impact production performance. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Monitoring helps detect data drift (e.g., abnormal sensor distributions) and infrastructure bottlenecks before they impact production performance.
 
 ***
 
 ## 📧 Author
 
-Developed by **Khaled Saifullah**. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+Developed by **Khaled Saifullah**.
 
-For collaboration, feature requests, or bug reports, please open an issue or contact the maintainer via the repository issue tracker. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28838993/73954e86-4b58-4282-b329-9da4280baf18/README.md)
+For collaboration, feature requests, or bug reports, please open an issue or contact the maintainer via the repository issue tracker.
