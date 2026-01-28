@@ -1,22 +1,22 @@
-# ✈️ AeroPredict: GenAI-Powered Predictive Maintenance Platform
+# AeroPredict: GenAI-Powered Predictive Maintenance Platform
 
 **AeroPredict** is a production-grade MLOps and Generative AI platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It simulates a modern industrial AI system by integrating deep learning for time-series forecasting with a RAG-powered LLM agent that generates automated, physics-informed maintenance reports.
 
 The system is built on the NASA C-MAPSS dataset and orchestrates the entire lifecycle—from data ingestion to technician reporting—using Apache Airflow, MLflow, and Docker.
 
-## 🚀 Key Features
+## Key Features
 
-- **🔮 Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate sensor trajectories to predict RUL with an asymmetric safety-first loss function.
+- **Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate sensor trajectories to predict RUL with an asymmetric safety-first loss function.
 
-- **🧠 GenAI Diagnostics (RAG):** A local Llama 3.2 agent (via Ollama) indexes technical manuals to explain failure modes (e.g., "HPC Efficiency Loss") based on real-time telemetry.
+- **GenAI Diagnostics (RAG):** A local Llama 3.2 agent (via Ollama) indexes technical manuals to explain failure modes (e.g., "HPC Efficiency Loss") based on real-time telemetry.
 
-- **📡 Automated Pipelines:** Apache Airflow DAGs manage the end-to-end workflow: Ingestion → Preprocessing → Training → Evaluation → Deployment.
+- **Automated Pipelines:** Apache Airflow DAGs manage the end-to-end workflow: Ingestion → Preprocessing → Training → Evaluation → Deployment.
 
-- **🖥️ Technician Dashboard:** A Streamlit interface connected to a FastAPI backend allows engineers to upload sensor logs and view instant predictions and AI-generated repair advice.
+- **Technician Dashboard:** A Streamlit interface connected to a FastAPI backend allows engineers to upload sensor logs and view instant predictions and AI-generated repair advice.
 
-- **📊 Full Observability:** Prometheus and Grafana monitor system health, container metrics, and inference latency in real-time.
+- **Full Observability:** Prometheus and Grafana monitor system health, container metrics, and inference latency in real-time.
 
-## 🏗️ Architecture
+## Architecture
 
 The system follows a microservices architecture orchestrated by Docker Compose:
 
@@ -31,7 +31,7 @@ The system follows a microservices architecture orchestrated by Docker Compose:
 
 ***
 
-## 🧠 Diagnostic Methodology
+## Diagnostic Methodology
 
 AeroPredict combines data-driven RUL modeling with a physics-informed health index and safety-oriented scoring.
 
@@ -59,7 +59,7 @@ AeroPredict combines data-driven RUL modeling with a physics-informed health ind
 
 ***
 
-## ⚡ Step-by-Step Setup Guide
+## Step-by-Step Setup Guide
 
 ### 1. Environment Preparation
 
@@ -112,7 +112,7 @@ Once containers are healthy, access services using the URLs below.
 
 ***
 
-## 🖥️ Usage & Credentials
+## Usage & Credentials
 
 | Service     | URL                    | Credentials (User / Pass) |
 |-------------|------------------------|----------------------------|
@@ -130,7 +130,7 @@ Typical workflow:
 
 ***
 
-## 🧪 Running Tests
+## Running Tests
 
 Unit tests validate data preprocessing assumptions, RUL label generation, and API contracts.
 
@@ -145,7 +145,7 @@ Add more tests under `tests/` for new models, scoring variants, or endpoints as 
 
 ***
 
-## 📂 Project Structure
+## Project Structure
 
 ```plaintext
 aeropredict-platform/
@@ -170,7 +170,7 @@ aeropredict-platform/
 
 ***
 
-## 📈 Monitoring & Observability
+## Monitoring & Observability
 
 - **Prometheus** scrapes metrics from the API, Airflow, and system exporters (e.g., Node Exporter).
 - **Grafana** dashboards track:
@@ -182,7 +182,7 @@ Monitoring helps detect data drift (e.g., abnormal sensor distributions) and inf
 
 ***
 
-## 📧 Author
+## Author
 
 Developed by **Khaled Saifullah**.
 
