@@ -1,0 +1,8 @@
+apache-airflow-providers-apache-spark
+apache-airflow-providers-amazon
+pyspark==3.5.0
+pandas
+numpy
+scikit-learn
+mlflow>=2.7.1
+psycopg2-binary
