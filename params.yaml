@@ -1,0 +1,57 @@
+# DVC Parameters for AeroPredict
+training:
+  epochs: 50
+  learning_rate: 0.001
+  batch_size: 32
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.2
+
+feature_engineering:
+  sequence_length: 50
+  prediction_horizon: 1
+  sensor_columns:
+    - sensor1
+    - sensor2
+    - sensor3
+    - sensor4
+    - sensor5
+    - sensor6
+    - sensor7
+    - sensor8
+    - sensor9
+    - sensor10
+    - sensor11
+    - sensor12
+    - sensor13
+    - sensor14
+    - sensor15
+    - sensor16
+    - sensor17
+    - sensor18
+    - sensor19
+    - sensor20
+    - sensor21
+
+bronze:
+  source: nasa_cmapss
+  format: txt
+
+silver:
+  normalization: zscore
+  outlier_threshold: 3.0
+  impute_strategy: forward_fill
+
+gold:
+  health_index_method: min_margin
+  failure_threshold: 0.0
+  feature_types:
+    - raw_sensors
+    - moving_average
+    - exponential_weighted
+    - health_index
+    - operating_mode
+
+model:
+  type: lstm
+  loss_function: asymmetric_safety_first

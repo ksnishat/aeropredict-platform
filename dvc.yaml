@@ -1,0 +1,100 @@
+# DVC Pipeline for AeroPredict
+# Bronze → Silver → Gold data pipeline with rollback
+
+# === DVC Configuration ===
+# Initialize DVC
+# dvc init
+# dvc remote add -d storage s3://aeropredict-dvc-bucket/dvc-store
+# dvc remote modify storage access_key_id $AWS_ACCESS_KEY_ID
+# dvc remote modify storage secret_access_key $AWS_SECRET_ACCESS_KEY
+
+stages:
+  # === BRONZE LAYER: Raw data ingestion ===
+  extract_bronze:
+    cmd: python src/scripts/extract_bronze.py
+    deps:
+      - src/scripts/extract_bronze.py
+    outs:
+      - data/bronze/sensor_raw.dvc
+    metrics:
+      - metrics/bronze_extraction.json:
+          cache: false
+    desc: Extract raw NASA C-MAPSS sensor data (bronze layer)
+
+  # === BRONZE → SILVER: Data cleaning ===
+  transform_silver:
+    cmd: python src/scripts/transform_silver.py
+    deps:
+      - src/scripts/transform_silver.py
+      - data/bronze/sensor_raw.dvc
+    outs:
+      - data/silver/sensor_cleaned.dvc
+      - data/silver/metadata.json
+    metrics:
+      - metrics/silver_quality.json:
+          cache: false
+    desc: Clean, normalize, and validate sensor data (silver layer)
+
+  # === SILVER → GOLD: Feature engineering ===
+  feature_engineer_gold:
+    cmd: python src/scripts/feature_engineer_gold.py
+    deps:
+      - src/scripts/feature_engineer_gold.py
+      - data/silver/sensor_cleaned.dvc
+    outs:
+      - data/gold/sensor_features.dvc
+      - data/gold/feature_importance.json
+      - data/gold/health_index.dvc
+    metrics:
+      - metrics/gold_features.json:
+          cache: false
+    desc: Create engineered features and health index (gold layer)
+
+  # === MODEL TRAINING ===
+  train_model:
+    cmd: python src/scripts/train_model.py
+    deps:
+      - src/scripts/train_model.py
+      - data/gold/sensor_features.dvc
+    outs:
+      - models/rul_model.pth
+      - models/scaler.pkl
+    metrics:
+      - metrics/model_metrics.json:
+          cache: false
+    params:
+      - training.epochs
+      - training.learning_rate
+      - training.batch_size
+    desc: Train LSTM model on engineered features
+
+  # === MODEL EVALUATION ===
+  evaluate_model:
+    cmd: python src/scripts/evaluate_model.py
+    deps:
+      - src/scripts/evaluate_model.py
+      - models/rul_model.pth
+      - data/gold/sensor_features.dvc
+    metrics:
+      - metrics/evaluation.json:
+          cache: false
+    plots:
+      - plots/training_curve.png:
+          cache: false
+      - plots/prediction_scatter.png:
+          cache: false
+    desc: Evaluate model performance and generate plots
+
+# === DVC Parameters ===
+# Store these in params.yaml
+# params.yaml:
+# training:
+#   epochs: 50
+#   learning_rate: 0.001
+#   batch_size: 32
+#   hidden_size: 128
+#   num_layers: 2
+#
+# feature_engineering:
+#   sequence_length: 50
+#   prediction_horizon: 1
