@@ -1,0 +1,254 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aeropredict
+  labels:
+    app: aeropredict
+---
+# ConfigMap for non-secret configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aeropredict-config
+  namespace: aeropredict
+data:
+  APP_NAME: "aeropredict"
+  APP_ENV: "production"
+  APP_LOG_LEVEL: "INFO"
+  MLFLOW_TRACKING_URI: "http://mlflow-service:5000"
+  OLLAMA_HOST: "http://ollama-service:11434"
+  OLLAMA_MODEL: "llama3.2"
+  ENABLE_RAG: "true"
+  ENABLE_METRICS: "true"
+---
+# Secrets (base64 encoded - use `echo -n 'value' | base64`)
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: aeropredict-secrets
+  namespace: aeropredict
+data:
+  POSTGRES_PASSWORD: "Y2hhbmdlbWU="
+  GRAFANA_ADMIN_PASSWORD: "YWRtaW4="
+---
+# FastAPI Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeropredict-api
+  namespace: aeropredict
+  labels:
+    app: aeropredict
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aeropredict
+      component: api
+  template:
+    metadata:
+      labels:
+        app: aeropredict
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/aeropredict/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: aeropredict-config
+            - secretRef:
+                name: aeropredict-secrets
+          env:
+            - name: API_HOST
+              value: "0.0.0.0"
+            - name: API_PORT
+              value: "8000"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: model-storage
+              mountPath: /app/models
+      volumes:
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: aeropredict-models-pvc
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: aeropredict-api-service
+  namespace: aeropredict
+  labels:
+    app: aeropredict
+    component: api
+spec:
+  selector:
+    app: aeropredict
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+---
+# Streamlit Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aeropredict-frontend
+  namespace: aeropredict
+  labels:
+    app: aeropredict
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aeropredict
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: aeropredict
+        component: frontend
+    spec:
+      containers:
+        - name: streamlit
+          image: ghcr.io/aeropredict/api:latest
+          command: ["streamlit", "run", "src/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+          ports:
+            - containerPort: 8501
+          env:
+            - name: API_URL
+              value: "http://aeropredict-api-service:80/predict"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: aeropredict-frontend-service
+  namespace: aeropredict
+  labels:
+    app: aeropredict
+    component: frontend
+spec:
+  selector:
+    app: aeropredict
+    component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8501
+  type: ClusterIP
+---
+# Ingress with TLS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aeropredict-ingress
+  namespace: aeropredict
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - aeropredict.example.com
+      secretName: aeropredict-tls
+  rules:
+    - host: aeropredict.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: prefix
+            backend:
+              service:
+                name: aeropredict-api-service
+                port:
+                  number: 80
+          - path: /
+            pathType: prefix
+            backend:
+              service:
+                name: aeropredict-frontend-service
+                port:
+                  number: 80
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: aeropredict-api-hpa
+  namespace: aeropredict
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: aeropredict-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# PersistentVolumeClaim for model storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aeropredict-models-pvc
+  namespace: aeropredict
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
