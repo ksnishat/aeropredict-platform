@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeropredict.fullname" . }}-api-service
+  labels:
+    app: {{ include "aeropredict.fullname" . }}
+    component: api
+spec:
+  selector:
+    app: {{ include "aeropredict.fullname" . }}
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: {{ .Values.service.type }}

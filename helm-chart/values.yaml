@@ -1,0 +1,51 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/aeropredict/api
+  pullPolicy: IfNotPresent
+  tag: latest
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: aeropredict.example.com
+  tls: true
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 2Gi
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilization: 70
+  targetMemoryUtilization: 80
+
+env:
+  APP_NAME: aeropredict
+  APP_ENV: production
+  APP_LOG_LEVEL: INFO
+  MLFLOW_TRACKING_URI: http://mlflow-service:5000
+  OLLAMA_HOST: http://ollama-service:11434
+  OLLAMA_MODEL: llama3.2
+  ENABLE_RAG: true
+  ENABLE_METRICS: true
+
+persistence:
+  enabled: true
+  size: 10Gi
+  accessMode: ReadWriteOnce
+
+streamlit:
+  enabled: true
+  port: 8501
+  replicas: 1

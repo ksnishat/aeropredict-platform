@@ -1,0 +1,14 @@
+apiVersion: v2
+name: aeropredict
+description: A Helm chart for AeroPredict - Predictive Maintenance RAG Platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - predictive-maintenance
+  - mlops
+  - fastapi
+  - streamlit
+maintainers:
+  - name: Khaled Saifullah
+    email: ksnishaat@gmail.com

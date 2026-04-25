@@ -1,0 +1,54 @@
+{{- if .Values.streamlit.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aeropredict.fullname" . }}-frontend
+  labels:
+    app: {{ include "aeropredict.fullname" . }}
+    component: frontend
+spec:
+  replicas: {{ .Values.streamlit.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "aeropredict.fullname" . }}
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: {{ include "aeropredict.fullname" . }}
+        component: frontend
+    spec:
+      containers:
+        - name: streamlit
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["streamlit", "run", "src/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+          ports:
+            - containerPort: 8501
+          env:
+            - name: API_URL
+              value: "http://{{ include "aeropredict.fullname" . }}-api-service:80/predict"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aeropredict.fullname" . }}-frontend-service
+  labels:
+    app: {{ include "aeropredict.fullname" . }}
+    component: frontend
+spec:
+  selector:
+    app: {{ include "aeropredict.fullname" . }}
+    component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8501
+  type: {{ .Values.service.type }}
+{{- end }}
