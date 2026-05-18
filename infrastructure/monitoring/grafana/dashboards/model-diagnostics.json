@@ -1,0 +1,69 @@
+{
+  "dashboard": {
+    "title": "AeroPredict Model Diagnostics",
+    "panels": [
+      {
+        "id": 1,
+        "title": "RUL Prediction Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "aeropredict_rul_prediction",
+            "legendFormat": "RUL"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Sensor Feature Drift",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aeropredict_sensor_drift_score",
+            "legendFormat": "Drift Score"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Model Confidence",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aeropredict_model_confidence",
+            "legendFormat": "Confidence"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Airflow DAG Runs",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "airflow_dag_run_state",
+            "legendFormat": "DAG State"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      }
+    ],
+    "refresh": "30s",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "schemaVersion": 27,
+    "version": 1,
+    "annotations": {
+      "list": []
+    },
+    "templating": {
+      "list": []
+    },
+    "tags": ["aeropredict", "model", "diagnostics"]
+  }
+}
