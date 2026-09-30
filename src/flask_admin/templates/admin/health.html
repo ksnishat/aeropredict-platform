@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-heart-pulse me-2"></i>System Health</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-server me-2"></i>Service Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Status</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for service, data in health_data.items() %}
+                            <tr>
+                                <td>{{ service.upper() }}</td>
+                                <td>
+                                    <span class="badge
+                                        {% if data.status == 'healthy' %}bg-success
+                                        {% elif data.status == 'unhealthy' %}bg-danger
+                                        {% else %}bg-secondary{% endif %}">
+                                        {{ data.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small>{{ data.url }}</small>
+                                    {% if data.model_loaded is defined %}
+                                        <br><small class="{% if data.model_loaded %}text-success{% else %}text-danger{% endif %}">
+                                            Model Loaded: {{ 'Yes' if data.model_loaded else 'No' }}
+                                        </small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-arrow-clockwise me-2"></i>Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="location.reload()">
+                        <i class="bi bi-arrow-clockwise me-2"></i>Refresh Health Check
+                    </button>
+                    <a href="{{ url_for('mlflow_experiment.index') }}" class="btn btn-outline-info">
+                        <i class="bi bi-folder me-2"></i>View MLflow Experiments
+                    </a>
+                    <a href="{{ url_for('mlflow_model_registry.index') }}" class="btn btn-outline-info">
+                        <i class="bi bi-box-seam me-2"></i>View Model Registry
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

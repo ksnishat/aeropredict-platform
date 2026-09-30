@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-box-seam me-2"></i>{{ model.name }}</h1>
+    <a href="{{ url_for('mlflow_model_registry.index') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Models
+    </a>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Description</h6>
+                <p class="mb-0">{{ model.description or 'No description' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Creation Time</h6>
+                <p class="mb-0">{{ model.creation_timestamp | from_timestamp if model.creation_timestamp else 'N/A' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Last Updated</h6>
+                <p class="mb-0">{{ model.last_updated_timestamp | from_timestamp if model.last_updated_timestamp else 'N/A' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">Model Versions</h5>
+    </div>
+    <div class="card-body">
+        {% if versions %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Version</th>
+                            <th>Stage</th>
+                            <th>Run ID</th>
+                            <th>Creation Time</th>
+                            <th>Last Updated</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for version in versions %}
+                        <tr>
+                            <td><code>v{{ version.version }}</code></td>
+                            <td>
+                                <span class="badge badge-stage
+                                    {% if version.current_stage == 'Production' %}bg-success
+                                    {% elif version.current_stage == 'Staging' %}bg-warning
+                                    {% elif version.current_stage == 'Archived' %}bg-secondary
+                                    {% else %}bg-info{% endif %}">
+                                    {{ version.current_stage }}
+                                </span>
+                            </td>
+                            <td><code>{{ version.run_id[:8] }}...</code></td>
+                            <td>{{ version.creation_timestamp | from_timestamp if version.creation_timestamp else 'N/A' }}</td>
+                            <td>{{ version.last_updated_timestamp | from_timestamp if version.last_updated_timestamp else 'N/A' }}</td>
+                            <td>{{ version.description or '-' }}</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('mlflow_model_registry.transition_model', model_name=model.name) }}" class="d-inline">
+                                    <input type="hidden" name="version" value="{{ version.version }}">
+                                    <select name="stage" class="form-select form-select-sm d-inline w-auto" onchange="this.form.submit()">
+                                        <option value="Staging" {% if version.current_stage == 'Staging' %}selected{% endif %}>Staging</option>
+                                        <option value="Production" {% if version.current_stage == 'Production' %}selected{% endif %}>Production</option>
+                                        <option value="Archived" {% if version.current_stage == 'Archived' %}selected{% endif %}>Archived</option>
+                                        <option value="None" {% if version.current_stage == 'None' %}selected{% endif %}>None</option>
+                                    </select>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-tag fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No versions for this model</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

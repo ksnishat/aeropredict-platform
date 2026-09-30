@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-folder me-2"></i>MLflow Experiments</h1>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">All Experiments</h5>
+    </div>
+    <div class="card-body">
+        {% if experiments %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Experiment ID</th>
+                            <th>Name</th>
+                            <th>Artifact Location</th>
+                            <th>Lifecycle Stage</th>
+                            <th>Creation Time</th>
+                            <th>Runs</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exp in experiments %}
+                        <tr>
+                            <td><code>{{ exp.experiment_id }}</code></td>
+                            <td>{{ exp.name }}</td>
+                            <td><small>{{ exp.artifact_location }}</small></td>
+                            <td>
+                                <span class="badge {% if exp.lifecycle_stage == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ exp.lifecycle_stage }}
+                                </span>
+                            </td>
+                            <td>{{ exp.creation_time | from_timestamp if exp.creation_time else 'N/A' }}</td>
+                            <td>-</td>
+                            <td>
+                                <a href="{{ url_for('mlflow_experiment.experiment_detail', experiment_id=exp.experiment_id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye me-1"></i>View Runs
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-folder-x fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No experiments found</p>
+                <p class="text-muted small">Experiments will appear here after running training pipelines</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

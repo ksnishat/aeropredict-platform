@@ -1,0 +1,118 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-folder me-2"></i>{{ experiment.name }}</h1>
+    <a href="{{ url_for('mlflow_experiment.index') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Experiments
+    </a>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Experiment ID</h6>
+                <p class="mb-0"><code>{{ experiment.experiment_id }}</code></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Artifact Location</h6>
+                <p class="mb-0 text-truncate" style="max-width: 200px;">{{ experiment.artifact_location }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Stage</h6>
+                <p class="mb-0">
+                    <span class="badge {% if experiment.lifecycle_stage == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ experiment.lifecycle_stage }}
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">Creation Time</h6>
+                <p class="mb-0">{{ experiment.creation_time | from_timestamp if experiment.creation_time else 'N/A' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">Runs</h5>
+    </div>
+    <div class="card-body">
+        {% if runs %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Run ID</th>
+                            <th>Status</th>
+                            <th>Start Time</th>
+                            <th>Duration</th>
+                            <th>Metrics</th>
+                            <th>Parameters</th>
+                            <th>Artifacts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for run in runs %}
+                        <tr>
+                            <td><code>{{ run.info.run_id[:8] }}...</code></td>
+                            <td>
+                                <span class="badge {% if run.info.status == 'FINISHED' %}bg-success{% elif run.info.status == 'RUNNING' %}bg-primary{% else %}bg-danger{% endif %}">
+                                    {{ run.info.status }}
+                                </span>
+                            </td>
+                            <td>{{ run.info.start_time | from_timestamp if run.info.start_time else 'N/A' }}</td>
+                            <td>
+                                {% if run.info.end_time and run.info.start_time %}
+                                    {{ ((run.info.end_time - run.info.start_time) / 1000) | round(1) }}s
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if run.data.metrics %}
+                                    <small>{{ run.data.metrics | tojson }}</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if run.data.params %}
+                                    <small>{{ run.data.params | tojson }}</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('mlflow_experiment.experiment_detail', experiment_id=experiment.experiment_id) }}#artifacts-{{ run.info.run_id }}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-file-earmark me-1"></i>Artifacts
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-play-circle fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No runs in this experiment</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-box-seam me-2"></i>Model Registry</h1>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header">
+        <h5 class="mb-0">Registered Models</h5>
+    </div>
+    <div class="card-body">
+        {% if models %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Model Name</th>
+                            <th>Versions</th>
+                            <th>Latest Version</th>
+                            <th>Production Version</th>
+                            <th>Staging Version</th>
+                            <th>Creation Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for model in models %}
+                        <tr>
+                            <td><strong>{{ model.name }}</strong></td>
+                            <td>{{ model.latest_versions | length }}</td>
+                            <td>
+                                {% if model.latest_versions %}
+                                    v{{ model.latest_versions[0].version }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% set prod = model.latest_versions | selectattr('current_stage', 'equalto', 'Production') | list %}
+                                {% if prod %}
+                                    <span class="badge bg-success">v{{ prod[0].version }}</span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% set staging = model.latest_versions | selectattr('current_stage', 'equalto', 'Staging') | list %}
+                                {% if staging %}
+                                    <span class="badge bg-warning">v{{ staging[0].version }}</span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ model.creation_timestamp | from_timestamp if model.creation_timestamp else 'N/A' }}</td>
+                            <td>
+                                <a href="{{ url_for('mlflow_model_registry.model_detail', model_name=model.name) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye me-1"></i>Details
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-box-seam fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No models registered</p>
+                <p class="text-muted small">Models will appear here after registering from experiments</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

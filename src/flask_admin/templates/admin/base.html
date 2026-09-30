@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ self.title() }} - AeroPredict Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .sidebar { min-height: 100vh; background-color: #f8f9fa; }
+        .sidebar .nav-link { color: #495057; }
+        .sidebar .nav-link:hover { color: #0d6efd; background-color: #e9ecef; }
+        .sidebar .nav-link.active { color: #0d6efd; background-color: #e7f1ff; font-weight: 500; }
+        .card-stat { transition: transform 0.2s; }
+        .card-stat:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .badge-stage { font-size: 0.75rem; padding: 0.35em 0.65em; }
+        .table th { background-color: #f8f9fa; }
+        .status-healthy { color: #198754; }
+        .status-unhealthy { color: #dc3545; }
+        .status-unreachable { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-2 sidebar p-0">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <h4 class="text-primary"><i class="bi bi-airplane-engines"></i> AeroPredict</h4>
+                        <small class="text-muted">Admin Panel</small>
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}" href="{{ url_for('dashboard.index') }}">
+                                <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'mlflow_experiment.index' %}active{% endif %}" href="{{ url_for('mlflow_experiment.index') }}">
+                                <i class="bi bi-folder me-2"></i> Experiments
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'mlflow_model_registry.index' %}active{% endif %}" href="{{ url_for('mlflow_model_registry.index') }}">
+                                <i class="bi bi-box-seam me-2"></i> Model Registry
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'system_health.index' %}active{% endif %}" href="{{ url_for('system_health.index') }}">
+                                <i class="bi bi-heart-pulse me-2"></i> System Health
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="col-md-10 ms-sm-auto px-4 py-4">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-dismiss alerts after 5 seconds
+        setTimeout(() => {
+            document.querySelectorAll('.alert').forEach(alert => {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            });
+        }, 5000);
+    </script>
+</body>
+</html>

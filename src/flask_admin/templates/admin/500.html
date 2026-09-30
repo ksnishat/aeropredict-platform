@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="text-center py-5">
+    <h1 class="display-1 text-danger">500</h1>
+    <p class="lead">Internal Server Error</p>
+    <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">Go to Dashboard</a>
+</div>
+{% endblock %}
