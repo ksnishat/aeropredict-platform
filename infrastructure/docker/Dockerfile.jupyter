@@ -1,0 +1,42 @@
+# 1. Base Image: Official Jupyter Spark Notebook (includes Spark 3.x, Java, Python)
+FROM quay.io/jupyter/pyspark-notebook:latest
+
+# 2. Switch to Root to install system-level dependencies
+USER root
+
+# Update system and install basic utilities (optional but recommended for debugging)
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Switch back to the default user 'jovyan' to install Python libraries
+USER ${NB_UID}
+
+# 4. Install PyTorch with GPU Support (CUDA 11.8)
+# We specify the index-url to force it to download the CUDA-enabled wheels
+RUN pip install --no-cache-dir \
+    torch \
+    torchvision \
+    torchaudio \
+    --index-url https://download.pytorch.org/whl/cu118
+
+# 5. Install Data Science & MLOps basics
+# (We add mlflow and minio now so you are ready for the next phase)
+RUN pip install --no-cache-dir \
+    mlflow \
+    minio \
+    boto3 \
+    psycopg2-binary \
+    matplotlib \
+    seaborn \
+    scikit-learn \
+    pandas
+
+# 6. (Optional) Fix permissions just in case
+USER root
+RUN fix-permissions "/home/${NB_USER}"
+
+# Switch back to user for running the container
+USER ${NB_UID}

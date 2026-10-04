@@ -1,0 +1,42 @@
+groups:
+  - name: AeroPredict Alerts
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(aeropredict_requests_total{status="error"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on AeroPredict API"
+          description: "Error rate is {{ $value | humanizePercentage }} over 5m window"
+
+      # High latency
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(aeropredict_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency on AeroPredict API"
+          description: "P95 latency is {{ $value }}s over 5m window"
+
+      # Model not loaded
+      - alert: ModelNotLoaded
+        expr: aeropredict_model_loaded == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AeroPredict model not loaded"
+          description: "The model is not loaded, predictions will fail"
+
+      # Airflow DAG failure
+      - alert: AirflowDAGFailure
+        expr: airflow_dag_run_state == "failed"
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Airflow DAG run failed"
+          description: "Dag {{ $labels.dag_id }} failed with {{ $labels.task_id }}"
