@@ -31,6 +31,15 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 - **Production Ready:** Kubernetes and Helm charts for scalable deployment on any cloud infrastructure.
 - **CI/CD Pipeline:** GitHub Actions for automated testing, building, and deployment.
 
+
+### Recent Improvements (2026)
+🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
+📦 **pyproject.toml** — Modern Python packaging with dependencies, entry points, ruff/mypy config
+🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
+⚡ **PyTorch Lightning** — Refactored LSTM training with Lightning for cleaner code, checkpointing, logging
+🚀 **BentoML Serving** — Production model serving with BentoML, batch predictions, health checks
+☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
+
 ## Architecture
 
 The system follows a microservices architecture orchestrated by Docker Compose and deployable to Kubernetes.
