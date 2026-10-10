@@ -117,7 +117,9 @@ services:
       # root is not writable by the airflow user and Airflow fails to start.
       - airflow_logs:/opt/airflow/logs
     ports:
-      - "8080:8080"
+      # 8081, not 8080: the documented port map reserves 8080 elsewhere and
+      # every README and the system-design guide reference 8081.
+      - "8081:8080"
     command: webserver
     depends_on:
       postgres:
