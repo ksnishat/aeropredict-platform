@@ -24,6 +24,22 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+# ChromaDB requires sqlite3 >= 3.35.0. The Airflow container runs on Debian
+# bullseye, which ships 3.34.1, so importing chromadb there raises
+# "Your system has an unsupported version of sqlite3". pysqlite3-binary bundles
+# a modern sqlite3; alias it over the stdlib module before chromadb is imported.
+try:  # pragma: no cover - depends on the runtime environment
+    import sqlite3
+
+    if sqlite3.sqlite_version_info < (3, 35, 0):
+        import pysqlite3  # type: ignore[import-not-found]
+
+        import sys
+
+        sys.modules["sqlite3"] = pysqlite3
+except ImportError:  # pragma: no cover
+    pass
+
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma

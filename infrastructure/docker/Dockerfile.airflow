@@ -2,18 +2,25 @@
 FROM apache/airflow:2.7.1
 
 USER root
-RUN apt-get update && \
-    apt-get install -y gcc && \
+# The apache/airflow:2.7.1 base image ships an apt source for
+# apt.postgresql.org that no longer publishes a Release file for bullseye, so a
+# plain `apt-get update` fails with exit code 100. Drop that source first.
+RUN rm -f /etc/apt/sources.list.d/pgdg.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
     rm -rf /var/lib/apt/lists/*
 
 USER airflow
 
-# Install PyTorch (CPU) + Scikit-Learn + PDF Library + API LIBS ✅
+# Install PyTorch (CPU) + Scikit-Learn + PDF Library + API LIBS
+# Use --extra-index-url rather than --index-url: --index-url replaces PyPI
+# entirely, so transitive dependencies such as typing-extensions and flit_core
+# cannot be resolved and the build fails.
 RUN pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
-    --index-url https://download.pytorch.org/whl/cpu
+    --extra-index-url https://download.pytorch.org/whl/cpu
 
 RUN pip install --no-cache-dir \
     pandas \
@@ -26,3 +33,20 @@ RUN pip install --no-cache-dir \
     uvicorn \
     pydantic \
     python-multipart
+
+# RAG dependencies for src/rag_inference.py. The DAG imports this module at
+# parse time, so a missing dependency here makes the DAG silently disappear
+# from the Airflow UI rather than failing loudly.
+RUN pip install --no-cache-dir \
+    chromadb \
+    langchain-chroma \
+    langchain-huggingface \
+    langchain-text-splitters \
+    langchain-community \
+    "sentence-transformers>=3.0.0,<4.0.0"
+
+# ChromaDB requires sqlite3 >= 3.35.0, but the Debian bullseye base image ships
+# 3.34.1 and the bullseye-security repo no longer serves a newer package. Use
+# the documented pysqlite3-binary shim instead: it bundles a modern sqlite3 and
+# is aliased over the stdlib module in src/rag_inference.py.
+RUN pip install --no-cache-dir pysqlite3-binary

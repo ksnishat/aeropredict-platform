@@ -89,6 +89,8 @@ services:
   airflow-webserver:
     image: ghcr.io/aeropredict/airflow:latest
     container_name: aeropredict_airflow_webserver
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     build:
       context: .
       dockerfile: infrastructure/docker/Dockerfile.airflow
@@ -98,15 +100,22 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      # MLflow runs on the host (port 5001), not as a compose service, so the
+      # container reaches it through the Docker gateway rather than by name.
+      - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
       - MINIO_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
     volumes:
       - ./dags:/opt/airflow/dags
+      # Mount src OUTSIDE the dags directory. Airflow scans everything under
+      # /opt/airflow/dags for DAG files, so mounting src there makes it try to
+      # parse every project module as a DAG and report import errors.
       - ./src:/opt/airflow/src
-      - ./data:/opt/airflow/data
-      - ./logs:/opt/airflow/logs
+      - ./Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData:/opt/airflow/data
+      # Named volume, not a bind mount: a host ./logs directory owned by
+      # root is not writable by the airflow user and Airflow fails to start.
+      - airflow_logs:/opt/airflow/logs
     ports:
       - "8080:8080"
     command: webserver
@@ -127,6 +136,8 @@ services:
   airflow-scheduler:
     image: ghcr.io/aeropredict/airflow:latest
     container_name: aeropredict_airflow_scheduler
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     build:
       context: .
       dockerfile: infrastructure/docker/Dockerfile.airflow
@@ -136,15 +147,22 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      # MLflow runs on the host (port 5001), not as a compose service, so the
+      # container reaches it through the Docker gateway rather than by name.
+      - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
       - MINIO_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
     volumes:
       - ./dags:/opt/airflow/dags
+      # Mount src OUTSIDE the dags directory. Airflow scans everything under
+      # /opt/airflow/dags for DAG files, so mounting src there makes it try to
+      # parse every project module as a DAG and report import errors.
       - ./src:/opt/airflow/src
-      - ./data:/opt/airflow/data
-      - ./logs:/opt/airflow/logs
+      - ./Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData:/opt/airflow/data
+      # Named volume, not a bind mount: a host ./logs directory owned by
+      # root is not writable by the airflow user and Airflow fails to start.
+      - airflow_logs:/opt/airflow/logs
     command: scheduler
     depends_on:
       - airflow-webserver
@@ -238,7 +256,9 @@ services:
       - ./data:/app/data
       - aeropredict_models:/app/models
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      # MLflow runs on the host (port 5001), not as a compose service, so the
+      # container reaches it through the Docker gateway rather than by name.
+      - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
       - OLLAMA_HOST=http://host.docker.internal:11434
       - PYTHONUNBUFFERED=1
     depends_on:
@@ -296,3 +316,4 @@ volumes:
   grafana_data:
   prometheus_data:
   aeropredict_models:
+  airflow_logs:
