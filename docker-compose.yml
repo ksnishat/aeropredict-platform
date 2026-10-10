@@ -103,6 +103,8 @@ services:
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
+      - KNOWLEDGE_BASE_PATH=/opt/airflow/knowledge_base/turbofan_maintenance.txt
+      - CHROMA_PERSIST_DIR=/opt/airflow/chroma
       - MINIO_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
@@ -112,6 +114,9 @@ services:
       # /opt/airflow/dags for DAG files, so mounting src there makes it try to
       # parse every project module as a DAG and report import errors.
       - ./src:/opt/airflow/src
+      # The RAG module resolves KNOWLEDGE_BASE_PATH relative to the working
+      # directory, so the knowledge base must be mounted too.
+      - ./knowledge_base:/opt/airflow/knowledge_base
       - ./Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData:/opt/airflow/data
       # Named volume, not a bind mount: a host ./logs directory owned by
       # root is not writable by the airflow user and Airflow fails to start.
@@ -152,6 +157,8 @@ services:
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
+      - KNOWLEDGE_BASE_PATH=/opt/airflow/knowledge_base/turbofan_maintenance.txt
+      - CHROMA_PERSIST_DIR=/opt/airflow/chroma
       - MINIO_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
@@ -161,6 +168,9 @@ services:
       # /opt/airflow/dags for DAG files, so mounting src there makes it try to
       # parse every project module as a DAG and report import errors.
       - ./src:/opt/airflow/src
+      # The RAG module resolves KNOWLEDGE_BASE_PATH relative to the working
+      # directory, so the knowledge base must be mounted too.
+      - ./knowledge_base:/opt/airflow/knowledge_base
       - ./Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData:/opt/airflow/data
       # Named volume, not a bind mount: a host ./logs directory owned by
       # root is not writable by the airflow user and Airflow fails to start.
@@ -261,6 +271,8 @@ services:
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
+      - KNOWLEDGE_BASE_PATH=/opt/airflow/knowledge_base/turbofan_maintenance.txt
+      - CHROMA_PERSIST_DIR=/opt/airflow/chroma
       - OLLAMA_HOST=http://host.docker.internal:11434
       - PYTHONUNBUFFERED=1
     depends_on:

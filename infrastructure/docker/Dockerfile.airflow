@@ -37,13 +37,18 @@ RUN pip install --no-cache-dir \
 # RAG dependencies for src/rag_inference.py. The DAG imports this module at
 # parse time, so a missing dependency here makes the DAG silently disappear
 # from the Airflow UI rather than failing loudly.
+#
+# posthog is pinned below 3.0.0 because ChromaDB pulls it in for telemetry and
+# posthog 3.x uses PEP 585 generics (dict[str, ...]) at runtime, which raises
+# "TypeError: 'type' object is not subscriptable" on this image's Python 3.8.
 RUN pip install --no-cache-dir \
     chromadb \
     langchain-chroma \
     langchain-huggingface \
     langchain-text-splitters \
     langchain-community \
-    "sentence-transformers>=3.0.0,<4.0.0"
+    "sentence-transformers>=3.0.0,<4.0.0" \
+    "posthog<3.0.0"
 
 # ChromaDB requires sqlite3 >= 3.35.0, but the Debian bullseye base image ships
 # 3.34.1 and the bullseye-security repo no longer serves a newer package. Use
