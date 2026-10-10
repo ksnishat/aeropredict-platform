@@ -123,139 +123,203 @@ Germany's manufacturing sector, particularly aerospace and automotive industries
 
 6. **Promoting Sustainable Manufacturing**: By preventing catastrophic failures and optimizing maintenance schedules, the platform contributes to resource efficiency and waste reduction goals in Germany's sustainability agenda.
 
-## Step-by-Step Setup Guide
+## Verified Model Metrics
 
-### 1. Environment Preparation
+These numbers were reproduced from the code in this repository on a local
+NVIDIA RTX 3050 Ti (4 GB). Follow [Quickstart](#quickstart) to reproduce them.
 
-Ensure the following are installed on your host machine:
+| Metric | Value | How it was measured |
+|--------|-------|---------------------|
+| Dataset | NASA C-MAPSS FD001 | 100 engines, 20,631 raw cycles |
+| Training windows | 15,631 | 50-timestep windows built **per engine** |
+| Features | 21 | C-MAPSS sensor channels (settings excluded) |
+| Model | 2-layer LSTM (hidden 50) | 35,051 parameters |
+| Loss | Asymmetric MSE (`late_penalty=5.0`) | Penalises late (under-estimated) RUL more |
+| Best validation loss | ~11,700 | 30 epochs |
+| MAE (held-out slice) | **53.70 cycles** | 2,000 windows |
+| RMSE (held-out slice) | 63.55 cycles | 2,000 windows |
 
-- Docker & Docker Compose
-- Python 3.10 (for local development)
-- **Ollama** (for hosting Llama 3.2 on the host, reachable from Docker)
-- **kubectl** and **helm** (for Kubernetes deployment)
+### Known limitation (honest disclosure)
 
-Create the base project structure:
+The current LSTM exhibits **mean-collapse**: it converges to a near-constant RUL
+prediction. This is an architectural limitation of the model/loss rather than of
+the data pipeline — both plain MSE and the asymmetric loss collapse identically
+under controlled testing. Repairing the windowing bug below improved MAE from
+**118.5 to 53.7 (2.2×)**, but does not by itself resolve the collapse.
+
+Two concrete next steps are tracked in the repository backlog:
+
+1. Piecewise-linear RUL target (cap the label, e.g. `min(RUL, 125)`).
+2. Replace the LSTM with a temporal-convolution or small Transformer encoder.
+
+This is documented rather than hidden so the metrics above are not overstated.
+
+## Quickstart
+
+### Prerequisites
+
+- Docker + Docker Compose
+- Python 3.10 (conda recommended)
+- Ollama (optional — the API falls back to template-based reports without it)
+
+### 1. Get the dataset
 
 ```bash
-# Create project structure
-mkdir -p data/raw data/processed logs plugins tests infrastructure/monitoring
+mkdir -p data/raw
+cp CMAPSSData/train_FD001.txt CMAPSSData/test_FD001.txt CMAPSSData/RUL_FD001.txt data/raw/
+ls data/raw/   # train_FD001.txt  test_FD001.txt  RUL_FD001.txt
 ```
 
-### 2. Dataset Acquisition
-
-After downloading the NASA C-MAPSS files and the manual, move them to `data/raw` so that Airflow and the ML pipeline can access them via the shared volume.
+### 2. Install dependencies
 
 ```bash
-# Move raw C-MAPSS text files so the pipeline can access them
-mv data/raw/*.txt data/
+conda create -n aeropredict-env python=3.10 -y
+conda activate aeropredict-env
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cu121   # cpu build: use /cpu
+pip install mlflow pandas numpy scikit-learn pydantic pypdf requests \
+            pytest pytest-cov httpx pytorch-lightning bentoml
 ```
 
-### 3. Setup the GenAI "Brain" (Ollama)
-
-The GenAI module requires **Llama 3.2** running from the host, reachable at `OLLAMA_HOST=0.0.0.0` so containers can connect.
+### 3. Train the model
 
 ```bash
-# Pull the required model
-OLLAMA_HOST=0.0.0.0 ollama pull llama3.2
-
-# Start the server with public access for Docker containers
-OLLAMA_HOST=0.0.0.0 ollama serve
+PYTHONPATH=src python src/train_model.py
 ```
 
-### 4. Build and Launch the Platform
+Runs are logged to MLflow under the `Airflow_Automated_Training` experiment.
 
-Use Docker Compose to build the custom images (Airflow, API, UI, monitoring stack) and start everything in detached mode.
+### 4. Export the TorchScript checkpoint for the API
 
 ```bash
-# Build custom images and start the microservices
+mkdir -p models
+PYTHONPATH=src python -c "import torch; from train_model import train; m = train(data_path='data/raw/train_FD001.txt', epochs=30); m.eval(); torch.jit.save(torch.jit.trace(m, torch.rand(1,50,21)), 'models/lstm_best.pt')"
+```
+
+### 5. Start the full stack
+
+```bash
 docker compose up --build -d
+docker compose ps
 ```
 
-Once containers are healthy, access services using the URLs below.
-
-### 5. Kubernetes Deployment (Optional)
-
-For production deployment:
+### 6. Verify
 
 ```bash
-# Install Helm chart
-helm install aeropredict ./helm-chart
-
-# Or deploy via kubectl
-kubectl apply -f k8s/
+curl http://localhost:8000/          # {"status":"healthy",...,"model_loaded":true}
+curl http://localhost:8000/metrics   # Prometheus metrics
 ```
-
-## Usage & Credentials
-
-| Service     | URL                    | Credentials (User / Pass) |
-|-------------|------------------------|----------------------------|
-| **Airflow** | http://localhost:8080  | `airflow / airflow` |
-| **Streamlit UI** | http://localhost:8501 | N/A (public) |
-| **Grafana** | http://localhost:3000  | `airflow / airflow` |
-| **MLflow**  | http://localhost:5000  | N/A (public) |
-| **FastAPI** | http://localhost:8000  | N/A (OpenAPI docs at `/docs`) |
-| **Prometheus** | http://localhost:9090 | N/A (public) |
-
-Typical workflow:
-
-- Start Airflow, unpause the main DAG (e.g., `aeropredict_pipeline`).
-- Wait for preprocessing and training runs to complete.
-- Open the Streamlit UI, select an engine or upload a test trajectory, view predicted RUL and generated maintenance report.
 
 ## Running Tests
 
-Unit tests validate data preprocessing assumptions, RUL label generation, and API contracts.
-
-Run tests from the API container:
-
 ```bash
-# Run tests inside the API container
-docker exec -it aeropredict_api python -m pytest tests/ -v
+PYTHONPATH=src pytest tests/ -v      # 43 passed
 ```
 
-Add more tests under `tests/` for new models, scoring variants, or endpoints as the project evolves.
+## Monitoring & Live Demo
+
+Two helper scripts at the repository root start the API plus Prometheus and
+Grafana for every project, and provision the dashboards:
+
+```bash
+./start_all_stacks.sh aeropredict    # API + Prometheus + Grafana
+python3 provision_dashboards.py      # datasource + dashboard
+```
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| **FastAPI (Swagger)** | http://localhost:8000/docs | — |
+| **MLflow** | http://localhost:5001 | — |
+| **Airflow** | http://localhost:8081 | `admin` / password printed on first start |
+| **Prometheus** | http://localhost:9090 | — |
+| **Grafana** | http://localhost:3001 | `admin` / `admin` |
+| **MinIO console** | http://localhost:9001 | `minioadmin` / `minioadmin` |
+
+### Exposed metrics
+
+| Metric | Type | Meaning |
+|--------|------|---------|
+| `aeropredict_predictions_total` | counter | Predictions served, labelled by `risk_level` |
+| `aeropredict_prediction_latency_seconds` | histogram | Inference latency |
+| `aeropredict_last_rul_value` | gauge | Most recent predicted RUL |
+| `aeropredict_model_loaded` | gauge | 1 when the trained model is used, 0 for the fallback |
+
+### Airflow pipeline
+
+`aeropredict_continuous_learning` retrains the LSTM, then generates a maintenance
+report (retrain → report), and logs training metrics to MLflow:
+
+```bash
+airflow dags unpause aeropredict_continuous_learning
+airflow dags trigger aeropredict_continuous_learning
+```
+
+### Kubernetes (optional)
+
+```bash
+helm install aeropredict ./helm-chart
+# or
+kubectl apply -f k8s/
+```
+
+## Usage
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Airflow | http://localhost:8080 | `airflow / airflow` |
+| Streamlit UI | http://localhost:8501 | — |
+| Grafana | http://localhost:3000 | `admin / admin` |
+| MLflow | http://localhost:5000 | — |
+| FastAPI | http://localhost:8000 | — |
+| Prometheus | http://localhost:9090 | — |
+
+Typical workflow:
+
+1. Start Airflow, unpause `aeropredict_continuous_learning`.
+2. Wait for `retrain_lstm_model` and `generate_maintenance_report` to succeed.
+3. Open the Streamlit UI, or POST a sensor CSV to `/predict`:
+
+```bash
+head -35 data/raw/train_FD001.txt > /tmp/sample.csv
+curl -X POST http://localhost:8000/predict -F "file=@/tmp/sample.csv"
+# {"rul":20,"risk_level":"CRITICAL","maintenance_recommendation":"High Urgency: Efficiency Loss detected in HPC module."}
+```
+
+## Configuration
+
+Endpoints are configurable so the code runs outside docker-compose:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow tracking server |
+| `MLFLOW_S3_ENDPOINT_URL` | `http://minio:9000` | Artifact store (MinIO) |
+| `MODEL_PATH` | `models/lstm_best.pt` | TorchScript checkpoint for the API |
+| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
+| `MANUAL_PATH` | `/opt/airflow/data/raw/Damage Propagation Modeling.pdf` | RAG source PDF |
 
 ## Project Structure
 
 ```plaintext
 aeropredict-platform/
-├── dags/                       # Airflow DAG definitions
-├── src/                        # Main application code
-│   ├── api.py                  # FastAPI backend (RUL + diagnostics API)
+├── dags/
+│   └── training_pipeline.py    # Airflow DAG (retrain -> GenAI report)
+├── src/
+│   ├── api.py                  # FastAPI backend (RUL + diagnostics + /metrics)
 │   ├── app.py                  # Streamlit technician dashboard
-│   ├── train_model.py          # LSTM training logic
-│   ├── rag_inference.py        # GenAI RAG implementation
-│   ├── config.py               # Pydantic settings configuration
-│   └── utils/
-│       └── logging_config.py   # Structured JSON logging
-├── tests/                      # Unit tests
-│   ├── test_api.py
-│   ├── test_data.py
-│   └── conftest.py
-├── infrastructure/             # DevOps & monitoring
-│   ├── docker/                 # Custom Dockerfiles
-│   └── monitoring/             # Prometheus/Grafana configs
-├── data/                       # C-MAPSS datasets & manuals (mounted into Airflow)
-│   ├── raw/                    # Original text files and PDFs
-│   └── processed/              # Normalized and windowed tensors
-├── helm-chart/                 # Helm chart for Kubernetes deployment
+│   ├── data_preprocessing.py   # Per-engine sliding windows + scaling
+│   ├── train_model.py          # LSTM training + MLflow logging
+│   ├── rag_inference.py        # GenAI report generation (configurable)
+│   ├── config.py               # Pydantic settings
+│   └── utils/logging_config.py # Structured JSON logging
+├── tests/                      # 43 tests (API, data, model, service)
+├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
+├── data/                       # C-MAPSS datasets and manuals
+├── helm-chart/                 # Helm chart for Kubernetes
 ├── k8s/                        # Kubernetes manifests
-├── job_preparation/            # Interview preparation materials
-│   ├── preparation.md
-│   └── contents.md
-└── docker-compose.yml          # Infrastructure orchestration
+├── terraform/                  # Infrastructure as code
+└── docker-compose.yml          # postgres, minio, mlflow, airflow, api, ui, monitoring
 ```
-
-## Monitoring & Observability
-
-- **Prometheus** scrapes metrics from the API, Airflow, and system exporters (e.g., Node Exporter).
-- **Grafana** dashboards track:
-  - RUL inference latency and throughput.
-  - Airflow task duration and failure rates.
-  - Container CPU, memory, and GPU utilization where applicable.
-  - Model drift detection and data quality metrics.
-
-Monitoring helps detect data drift (e.g., abnormal sensor distributions) and infrastructure bottlenecks before they impact production performance.
 
 ## Troubleshooting
 
@@ -269,6 +333,9 @@ Monitoring helps detect data drift (e.g., abnormal sensor distributions) and inf
 | **Pods crashing with OOMKill** | Increase resource limits in values.yaml or check for memory leaks in custom code |
 | **Database connection failed** | Verify PostgreSQL service is running and credentials in secrets are correct |
 | **Prometheus not scraping metrics** | Check that `/metrics` endpoint is exposed and ServiceMonitor is configured |
+| **Grafana shows "No data"** | The datasource must point at the Prometheus *container IP*, not `host.docker.internal`; re-run `provision_dashboards.py` |
+| **Model returns a constant RUL** | Known limitation of the current LSTM — see [Known limitation](#known-limitation-honest-disclosure) |
+| **Airflow DAG fails at `retrain_lstm_model`** | Ensure `AEROPREDICT_SRC` points at the mounted `src/` directory and that MLflow is reachable from the container |
 
 ## Author
 
