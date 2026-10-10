@@ -17,7 +17,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![OS: Linux](https://img.shields.io/badge/OS-Linux-2F2F2F?style=flat)
 
-**AeroPredict** is a production-grade MLOps platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It integrates a PyTorch LSTM network for time-series forecasting with a GenAI diagnostics module (Llama 3.2 via Ollama) that generates maintenance recommendations.
+**AeroPredict** is a production-grade MLOps platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It integrates a PyTorch LSTM network for time-series forecasting with a GenAI diagnostics module (a local LLM via Ollama, model configurable) that generates maintenance recommendations.
 
 The system is built on the NASA C-MAPSS dataset and orchestrates the entire lifecycle—from data ingestion to technician reporting—using Apache Airflow, MLflow, and Docker.
 
