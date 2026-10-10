@@ -1,0 +1,229 @@
+TURBOFAN ENGINE DEGRADATION AND MAINTENANCE REFERENCE
+Predictive Maintenance Knowledge Base
+Revision 3.1
+
+================================================================================
+SECTION 1: SCOPE
+================================================================================
+
+This reference describes the degradation modes observable in turbofan engines
+and the maintenance actions associated with each. It is the retrieval corpus
+for the AeroPredict maintenance-report assistant.
+
+The engine model used for validation is a two-spool turbofan with a fan, a
+low-pressure compressor (LPC), a high-pressure compressor (HPC), a combustor,
+a high-pressure turbine (HPT), a low-pressure turbine (LPT), and a nozzle.
+Sensor channels record temperature, pressure, fan speed, core speed, fuel
+flow, and bleed enthalpy.
+
+================================================================================
+SECTION 2: SENSOR CHANNELS
+================================================================================
+
+The following channels are recorded per operating cycle.
+
+  Channel   Quantity                          Units
+  --------  --------------------------------  ---------
+  T2        Fan inlet total temperature        deg R
+  T24       LPC outlet total temperature       deg R
+  T30       HPC outlet total temperature       deg R
+  T50       LPT outlet total temperature       deg R
+  P2        Fan inlet pressure                 psia
+  P15       Bypass duct pressure               psia
+  P30       HPC outlet pressure                psia
+  Nf        Physical fan speed                 rpm
+  Nc        Physical core speed                rpm
+  epr       Engine pressure ratio              dimensionless
+  Ps30      HPC outlet static pressure          psia
+  phi       Fuel flow ratio                    pps/psi
+  NRf       Corrected fan speed                rpm
+  NRc       Corrected core speed               rpm
+  BPR       Bypass ratio                       dimensionless
+  farB      Burner fuel-air ratio              dimensionless
+  htBleed   Bleed enthalpy                     dimensionless
+  Nf_dmd    Demanded fan speed                 rpm
+  PCNfR_dmd Demanded corrected fan speed       rpm
+  W31       HPT coolant bleed                  lbm/s
+  W32       LPT coolant bleed                  lbm/s
+
+================================================================================
+SECTION 3: DEGRADATION MODES
+================================================================================
+
+3.1 HPC EFFICIENCY LOSS
+    The high-pressure compressor loses aerodynamic efficiency as blade tip
+    clearances grow and blade surfaces foul. Observable signature:
+      - T30 rises relative to P30 at constant corrected core speed.
+      - Ps30 falls for a given fuel flow.
+      - Fuel flow ratio phi increases to hold thrust.
+    Typical onset: 60 to 80 percent of useful life consumed.
+    Primary indicator channels: T30, P30, Ps30, phi.
+
+3.2 HPC FLOW LOSS
+    The high-pressure compressor passes less mass flow than nominal, usually
+    from blade erosion or seal wear. Observable signature:
+      - P30 falls more sharply than T30 rises.
+      - epr decreases.
+      - Bypass ratio BPR increases slightly as core flow drops.
+    Primary indicator channels: P30, epr, BPR, Nc.
+
+3.3 FAN EFFICIENCY LOSS
+    Fan blade fouling or erosion reduces the work the fan transfers to the
+    bypass stream. Observable signature:
+      - T24 rises relative to T2.
+      - P15 falls relative to P2.
+      - Corrected fan speed NRf drifts from demanded speed Nf_dmd.
+    Primary indicator channels: T24, P15, NRf, Nf_dmd.
+
+3.4 FAN FLOW LOSS
+    Reduced fan mass flow, typically from foreign object damage or tip rub.
+    Observable signature:
+      - BPR decreases.
+      - P2 to P15 pressure ratio changes.
+      - Fan speed must increase to hold thrust.
+    Primary indicator channels: BPR, P2, P15, Nf.
+
+3.5 LPT EFFICIENCY LOSS
+    Low-pressure turbine efficiency degrades from blade creep and tip
+    clearance growth. Observable signature:
+      - T50 rises for a given Nf.
+      - LPT coolant bleed W32 demand increases.
+    Primary indicator channels: T50, W32, Nf.
+
+3.6 HPT EFFICIENCY LOSS
+    High-pressure turbine degradation, usually the most safety-critical mode
+    because it directly affects core power extraction. Observable signature:
+      - T50 rises sharply.
+      - HPT coolant bleed W31 demand increases.
+      - Core speed Nc becomes harder to hold.
+    Primary indicator channels: T50, W31, Nc, T30.
+
+================================================================================
+SECTION 4: REMAINING USEFUL LIFE
+================================================================================
+
+4.1 DEFINITION
+    Remaining Useful Life (RUL) is the number of operating cycles remaining
+    before the engine reaches the failure threshold. In the reference dataset
+    the failure threshold is a 30 percent drop in HPC outlet static pressure
+    Ps30 from its nominal value.
+
+4.2 HEALTH INDEX
+    The health index h(t) is the minimum of the normalised subsystem margins.
+    The subsystem with the smallest margin is the bottleneck and determines
+    the health index. A health index of 1.0 indicates a new engine; 0.0
+    indicates the failure threshold.
+
+4.3 RUL BANDS AND URGENCY
+    The following bands map a predicted RUL to a maintenance urgency. These
+    are the thresholds the reporting assistant should apply.
+
+      RUL range (cycles)   Band        Urgency   Action window
+      -------------------  ----------  --------  ---------------------------
+      greater than 125     Nominal     Low       Routine scheduled interval
+      80 to 125            Watch       Low       Plan at next scheduled check
+      50 to 79             Elevated    Medium    Schedule within 10 cycles
+      25 to 49             High        High      Schedule within 5 cycles
+      less than 25         Critical    High      Immediate inspection
+
+    A prediction below 25 cycles is treated as critical regardless of model
+    confidence, because the cost of a missed failure exceeds the cost of an
+    unnecessary inspection.
+
+================================================================================
+SECTION 5: MAINTENANCE ACTIONS BY MODE
+================================================================================
+
+5.1 HPC EFFICIENCY LOSS - ACTION
+    Perform a compressor water wash. If efficiency does not recover above the
+    nominal band, borescope the HPC stages and measure tip clearance. Replace
+    blades if clearance exceeds the service limit.
+
+5.2 HPC FLOW LOSS - ACTION
+    Borescope the HPC for blade erosion and seal wear. Check the variable
+    stator vane schedule. Replace worn seals. If flow loss exceeds 3 percent,
+    remove the compressor module for overhaul.
+
+5.3 FAN EFFICIENCY LOSS - ACTION
+    Inspect fan blades for fouling and erosion. Clean blades and rebalance the
+    fan rotor. Check the fan case for rub marks.
+
+5.4 FAN FLOW LOSS - ACTION
+    Perform a fan blade tip clearance inspection. Check for foreign object
+    damage on the leading edges. Replace damaged blades as a matched set to
+    preserve rotor balance.
+
+5.5 LPT EFFICIENCY LOSS - ACTION
+    Borescope the LPT stages. Measure tip clearance. Check the LPT coolant
+    bleed schedule against the nominal curve.
+
+5.6 HPT EFFICIENCY LOSS - ACTION
+    This is the highest-priority mode. Borescope the HPT immediately. Inspect
+    for blade creep, coating loss, and cooling hole blockage. Verify the HPT
+    coolant bleed W31 is within schedule. Any HPT anomaly with a predicted RUL
+    below 50 cycles requires an immediate inspection.
+
+================================================================================
+SECTION 6: DIAGNOSTIC PROCEDURE
+================================================================================
+
+When a predicted RUL falls into the Elevated band or worse, run the following
+sequence.
+
+  Step 1  Compare the current cycle's sensor vector against the nominal
+          baseline for the same corrected core speed.
+  Step 2  Identify which channels deviate by more than two standard
+          deviations. Map those channels to a degradation mode using
+          Section 3.
+  Step 3  Confirm the mode with a second, independent channel from the same
+          mode's indicator list. A single-channel deviation is not sufficient
+          evidence.  Step 4  Apply the maintenance action from Section 5 for the confirmed mode.
+  Step 5  Record the finding, the confirmed mode, and the action taken in the
+          engine log.
+
+================================================================================
+SECTION 7: REPORTING REQUIREMENTS
+================================================================================
+
+Every generated maintenance report must state:
+
+  1. The predicted RUL in cycles and the corresponding urgency band.
+  2. The most likely degradation mode, with the specific sensor channels that
+     support it.
+  3. The recommended maintenance action from Section 5.
+  4. An explicit statement of uncertainty. If the model's prediction is close
+     to a band boundary, say so rather than asserting a single band.
+
+Reports must not assert a degradation mode that is not supported by at least
+two indicator channels. When the evidence is ambiguous, the report must say
+that the evidence is ambiguous and recommend a borescope inspection.
+
+================================================================================
+SECTION 8: KNOWN MODEL LIMITATIONS
+================================================================================
+
+8.1 MEAN COLLAPSE
+    Sequence models trained on this dataset can converge to predicting the
+    population mean RUL rather than tracking individual engine trajectories.
+    The symptom is a near-constant prediction across engines with very
+    different true RUL values. This is an architectural limitation, not a data
+    defect: it reproduces identically under both symmetric and asymmetric loss
+    functions.
+
+8.2 MITIGATIONS
+    Two mitigations are known to help:
+      - Clip the training target at a ceiling, for example min(RUL, 125), so
+        the model is not asked to distinguish 200 from 250 cycles when both
+        are far from failure.
+      - Replace the recurrent encoder with a temporal convolutional network or
+        a small Transformer encoder, which handle long-range dependencies
+        without the vanishing-gradient behaviour of a plain LSTM.
+
+8.3 WINDOWING
+    Training windows must never cross an engine boundary. A window that spans
+    two engines presents the model with a physically impossible transition and
+    degrades the learned representation. Build windows per engine.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

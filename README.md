@@ -24,7 +24,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 ## Key Features
 
 - **Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate C-MAPSS sensor trajectories to predict RUL using an asymmetric safety-first loss (MSE with a higher penalty for late/under-estimated predictions), with fallback baseline when model is unavailable.
-- **GenAI Diagnostics (RAG):** A local Llama 3.2 agent (via Ollama) reads NASA technical manuals and generates maintenance recommendations. The API includes template-based fallback when Ollama is unavailable.
+- **GenAI Diagnostics (RAG):** A ChromaDB vector index over a turbofan maintenance reference, retrieved per prediction and passed to a local LLM (via Ollama) to generate maintenance recommendations. The API includes a deterministic template fallback when the LLM is unavailable.
 - **Automated Pipelines:** Apache Airflow DAGs manage the end-to-end workflow: Ingestion → Preprocessing → Training → Evaluation → Deployment.
 - **Technician Dashboard:** A Streamlit interface connected to a FastAPI backend allows engineers to upload sensor logs and view instant predictions and AI-generated repair advice.
 - **Full Observability:** Prometheus and Grafana monitor system health, container metrics, and inference latency in real-time.
@@ -50,7 +50,7 @@ graph TD
     subgraph Data_Layer[Data Layer]
         direction TB
         Raw_Data[NASA C-MAPSS Dataset<br/>data/raw/*.txt] --> Processed_Data[Processed Features<br/>data/processed/*.npy]
-        Technical_Manuals[Maintenance Manuals<br/>data/manuals/*.pdf] --> Vector_DB[Vector Database<br/>FAISS Index]
+        Technical_Manuals[Maintenance Reference<br/>knowledge_base/*.txt] --> Vector_DB[ChromaDB<br/>Persisted Vector Index]
     end
     
     %% Core Services
@@ -60,7 +60,7 @@ graph TD
         Airflow --> Ingestion[Data Ingestion<br/>Preprocessing]
         Training --> Model_Registry[MLflow Model Registry<br/>Model Versioning]
         Training --> API_Backend[FastAPI Backend<br/>Inference Service]
-        API_Backend --> RAG_Engine[RAG Engine<br/>Llama 3.2 via Ollama]
+        API_Backend --> RAG_Engine[RAG Engine<br/>ChromaDB + local LLM]
         API_Backend --> Prometheus[Metrics Endpoint<br/>/metrics]
     end
     
@@ -99,7 +99,7 @@ graph TD
 | Feature | Description | Business Value | German Industry Relevance |
 |---------|-------------|----------------|---------------------------|
 | **Predictive Maintenance** | LSTM-based RUL prediction with asymmetric safety-first loss | Reduces unplanned downtime by up to 40% | Aligns with Industrie 4.0 predictive maintenance initiatives |
-| **GenAI-Powered Reports** | Llama 3.2 reports maintenance recommendations via RAG (with template fallback) | Saves technician time on documentation | Meets VDI/VDE standards for maintenance documentation |
+| **GenAI-Powered Reports** | ChromaDB retrieval over a maintenance reference, then a local LLM generates the report (with template fallback) | Removes the blank-page step from maintenance documentation | Meets VDI/VDE standards for maintenance documentation |
 | **Real-time Monitoring** | Prometheus/Grafana stack with custom dashboards | Enables proactive maintenance scheduling | Supports DIN EN ISO 13379 condition monitoring standards |
 | **Microservices Architecture** | Containerized, scalable services | Easy deployment and horizontal scaling | Compatible with German Industrie 4.0 reference architecture (RAMI 4.0) |
 | **CI/CD Pipeline** | Automated testing and deployment via GitHub Actions | Ensures code quality and rapid iteration | Supports DevOps practices valued in German automotive/aerospace |
@@ -296,7 +296,10 @@ Endpoints are configurable so the code runs outside docker-compose:
 | `MODEL_PATH` | `models/lstm_best.pt` | TorchScript checkpoint for the API |
 | `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
-| `MANUAL_PATH` | `/opt/airflow/data/raw/Damage Propagation Modeling.pdf` | RAG source PDF |
+| `KNOWLEDGE_BASE_PATH` | `knowledge_base/turbofan_maintenance.txt` | RAG source document |
+| `CHROMA_PERSIST_DIR` | `data/chroma` | Persisted vector index location |
+| `CHROMA_COLLECTION` | `turbofan_maintenance` | ChromaDB collection name |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
 
 ## Project Structure
 
@@ -309,23 +312,84 @@ aeropredict-platform/
 │   ├── app.py                  # Streamlit technician dashboard
 │   ├── data_preprocessing.py   # Per-engine sliding windows + scaling
 │   ├── train_model.py          # LSTM training + MLflow logging
-│   ├── rag_inference.py        # GenAI report generation (configurable)
+│   ├── rag_inference.py        # ChromaDB RAG + local LLM report generation
 │   ├── config.py               # Pydantic settings
 │   └── utils/logging_config.py # Structured JSON logging
+├── knowledge_base/
+│   └── turbofan_maintenance.txt # RAG source: degradation modes, RUL bands, actions
 ├── tests/                      # 43 tests (API, data, model, service)
 ├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
-├── data/                       # C-MAPSS datasets and manuals
+├── data/                       # C-MAPSS datasets and the persisted Chroma index
 ├── helm-chart/                 # Helm chart for Kubernetes
 ├── k8s/                        # Kubernetes manifests
 ├── terraform/                  # Infrastructure as code
 └── docker-compose.yml          # postgres, minio, mlflow, airflow, api, ui, monitoring
 ```
 
+## RAG Maintenance Assistant
+
+`src/rag_inference.py` builds a **ChromaDB** vector index over
+`knowledge_base/turbofan_maintenance.txt` and retrieves the passages relevant to
+a specific RUL prediction before asking a local LLM to write the report.
+
+This replaced an earlier implementation that read the first five pages of a PDF
+and stuffed the raw text into the prompt. That was not retrieval: it sent the
+same fixed context for every prediction and could not cite which part of the
+reference supported a claim.
+
+### How it works
+
+1. The reference is split with `RecursiveCharacterTextSplitter` (900 chars, 150
+   overlap). Section-divider rules are stripped first, because otherwise they
+   become their own chunks and dominate retrieval.
+2. Chunks are embedded with `all-MiniLM-L6-v2` and persisted to ChromaDB at
+   `data/chroma/` — built once, reused across runs.
+3. A query built from the predicted RUL retrieves the top 4 passages.
+4. The LLM answers **only** from those passages, in a fixed
+   urgency / mode / action / uncertainty structure.
+
+### Verified behaviour
+
+With the index built (13 chunks), a query for a 23-cycle RUL retrieves the RUL
+band table and the HPT degradation section — the two passages that actually
+answer the question:
+
+```
+score=0.7102 :: 'below 50 cycles requires an immediate inspection. SECTION 6: DIAGNOSTIC...'
+score=0.7362 :: 'the health index. A health index of 1.0 indicates a new engine; 0.0...'
+score=1.0499 :: 'because it directly affects core power extraction. Observable signature:...'
+score=1.0682 :: 'engine log. SECTION 7: REPORTING REQUIREMENTS...'
+```
+
+### Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KNOWLEDGE_BASE_PATH` | `knowledge_base/turbofan_maintenance.txt` | Document to index |
+| `CHROMA_PERSIST_DIR` | `data/chroma` | Vector store location |
+| `CHROMA_COLLECTION` | `turbofan_maintenance` | Collection name |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
+| `OLLAMA_MODEL` | `llama3.2` | Generation model |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama endpoint |
+
+To index your own reference instead:
+
+```bash
+KNOWLEDGE_BASE_PATH=/path/to/reference.txt python -m src.rag_inference
+```
+
+> **Hardware note:** a 4 GB GPU cannot hold a 26B model. Use a small model
+> (1B-3B) for responsive generation, or accept CPU-bound latency with a larger
+> one. The embedding model is small enough to run on CPU if the GPU is busy.
+
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | **Ollama connection refused** | Ensure Ollama is running with `OLLAMA_HOST=0.0.0.0 ollama serve` and check firewall settings |
+| **RAG report is a template fallback** | The LLM was unreachable or the index failed to build. Check `ollama list` and that `knowledge_base/turbofan_maintenance.txt` exists |
+| **RAG responses are very slow** | A large Ollama model is spilling to CPU. Check `ollama ps` — if PROCESSOR shows a high CPU percentage, switch to a smaller model via `OLLAMA_MODEL` |
+| **`torch.OutOfMemoryError` while embedding** | The GPU is occupied. Set `CUDA_VISIBLE_DEVICES=""` to run the embedding model on CPU |
 | **MLflow UI not loading** | Verify MLflow service is healthy: `kubectl get pods` or `docker compose ps mlflow` |
 | **Model not loading in API** | Check that model files exist in PVC and that MLflow tracking URI is correct |
 | **High memory usage in Streamlit** | Reduce batch size in data preprocessing or increase container memory limits |
