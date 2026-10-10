@@ -1,15 +1,59 @@
+# --- Orchestration ---
 apache-airflow-providers-apache-spark
 apache-airflow-providers-amazon
 pyspark==3.5.0
+
+# --- Data & ML ---
 pandas
 numpy
 scikit-learn
+torch
+pytorch-lightning
+matplotlib
+plotly
+
+# --- Experiment tracking & registry ---
 mlflow>=2.7.1
+
+# --- Database ---
 psycopg2-binary
+
+# --- API & serving ---
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+python-multipart
+bentoml>=1.2.0
+prometheus-client
+requests
+
+# --- Frontend ---
+streamlit
+flask
+flask-admin
+
+# --- RAG ---
 chromadb>=0.5.0
 langchain-chroma>=0.1.0
+langchain-community>=0.2.0
+langchain-core>=0.2.0
 langchain-huggingface>=0.1.0
 langchain-text-splitters>=0.2.0
-langchain-community>=0.2.0
 sentence-transformers>=3.0.0,<4.0.0
-bentoml>=1.2.0
+pypdf>=4.0.0
+
+# --- Logging ---
+python-json-logger
+
+# --- Utilities ---
+packaging
+# Only needed where the system sqlite3 is older than 3.35 (ChromaDB's minimum),
+# which is the case on the Python 3.8 Airflow image. src/rag_inference.py
+# aliases it over the stdlib module when required.
+pysqlite3-binary; python_version < "3.9"
+
+# --- Tests ---
+pytest
+pytest-cov
+httpx

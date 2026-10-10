@@ -42,6 +42,16 @@ dependencies = [
     "langchain-community>=0.2.0",
     "sentence-transformers>=3.0.0,<4.0.0",
     "bentoml>=1.2.0",
+    "torch",
+    "pytorch-lightning",
+    "matplotlib",
+    "plotly",
+    "flask",
+    "flask-admin",
+    "langchain-core>=0.2.0",
+    "python-json-logger",
+    "packaging",
+    "pysqlite3-binary; python_version < '3.9'",
 ]
 
 [project.optional-dependencies]
