@@ -204,8 +204,10 @@ def train(
         mlflow.log_metric("final_val_loss", val_loss)
         mlflow.log_metric("best_val_loss", best_val_loss)
 
-        # Log model (pickle serialization keeps numpy input_example working)
-        input_example = X[:1]
+        # Log model. MLflow infers the signature from input_example and accepts
+        # numpy arrays but not torch tensors, so convert first. Pickle
+        # serialization keeps the numpy example valid.
+        input_example = X[:1].detach().cpu().numpy()
         mlflow.pytorch.log_model(
             model, "model", input_example=input_example, serialization_format="pickle"
         )
