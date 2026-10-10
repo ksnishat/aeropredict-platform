@@ -19,6 +19,7 @@ import os
 import sys
 import numpy as np
 from pathlib import Path
+from packaging.version import Version
 
 # Add the parent directory to path so we can import 'src' if needed
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -205,12 +206,15 @@ def train(
         mlflow.log_metric("best_val_loss", best_val_loss)
 
         # Log model. MLflow infers the signature from input_example and accepts
-        # numpy arrays but not torch tensors, so convert first. Pickle
-        # serialization keeps the numpy example valid.
+        # numpy arrays but not torch tensors, so convert first.
         input_example = X[:1].detach().cpu().numpy()
-        mlflow.pytorch.log_model(
-            model, "model", input_example=input_example, serialization_format="pickle"
-        )
+        log_kwargs = {"input_example": input_example}
+        # serialization_format only exists in MLflow 3.x. The Airflow container
+        # pins MLflow 2.x, so pass it only when the installed version supports
+        # it rather than failing the whole training run.
+        if Version(mlflow.__version__) >= Version("3.0.0"):
+            log_kwargs["serialization_format"] = "pickle"
+        mlflow.pytorch.log_model(model, "model", **log_kwargs)
         print(f"Model saved to MLflow! Best val loss: {best_val_loss:.4f}")
 
         return model
