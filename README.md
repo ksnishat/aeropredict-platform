@@ -280,9 +280,10 @@ Typical workflow:
 3. Open the Streamlit UI, or POST a sensor CSV to `/predict`:
 
 ```bash
-head -35 data/raw/train_FD001.txt > /tmp/sample.csv
+# /predict takes a multipart file upload, not a JSON body.
+head -60 Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData/train_FD001.txt > /tmp/sample.csv
 curl -X POST http://localhost:8000/predict -F "file=@/tmp/sample.csv"
-# {"rul":20,"risk_level":"CRITICAL","maintenance_recommendation":"High Urgency: Efficiency Loss detected in HPC module."}
+# {"rul":118,"risk_level":"LOW","maintenance_recommendation":"Normal Operation: Standard maintenance recommended."}
 ```
 
 ## Configuration
