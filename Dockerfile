@@ -28,7 +28,7 @@ WORKDIR /app
 # Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
-    libhdf5-103 \
+    libhdf5-310 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python packages from builder

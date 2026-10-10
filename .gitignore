@@ -64,6 +64,11 @@ serving/
 # --- MLflow ---
 mlruns/
 mlruns/*
+mlruns_*/
+
+# --- Local datasets (tracked with DVC) ---
+*-main/
+Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/
 
 # --- Airflow ---
 airflow_logs/

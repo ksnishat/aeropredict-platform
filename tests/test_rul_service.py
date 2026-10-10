@@ -31,8 +31,12 @@ class TestBentoMLService:
         """JSON prediction should work with valid sensor data."""
         from src.services.rul_service import predict_rul_json
 
+        # Varying sensor readings (constant values normalise to zero and are not realistic)
         input_data = {
-            "sensor_data": [[0.5] * 21 for _ in range(50)],
+            "sensor_data": [
+                [0.5 + 0.01 * i + 0.001 * s for s in range(21)]
+                for i in range(50)
+            ],
             "engine_id": "test_engine"
         }
         result = predict_rul_json.func(input_data) if hasattr(predict_rul_json, 'func') else predict_rul_json(input_data)

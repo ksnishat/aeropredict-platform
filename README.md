@@ -23,7 +23,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ## Key Features
 
-- **Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate C-MAPSS sensor trajectories to predict RUL using MSE loss, with fallback baseline when model is unavailable.
+- **Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate C-MAPSS sensor trajectories to predict RUL using an asymmetric safety-first loss (MSE with a higher penalty for late/under-estimated predictions), with fallback baseline when model is unavailable.
 - **GenAI Diagnostics (RAG):** A local Llama 3.2 agent (via Ollama) reads NASA technical manuals and generates maintenance recommendations. The API includes template-based fallback when Ollama is unavailable.
 - **Automated Pipelines:** Apache Airflow DAGs manage the end-to-end workflow: Ingestion → Preprocessing → Training → Evaluation → Deployment.
 - **Technician Dashboard:** A Streamlit interface connected to a FastAPI backend allows engineers to upload sensor logs and view instant predictions and AI-generated repair advice.
@@ -98,7 +98,7 @@ graph TD
 
 | Feature | Description | Business Value | German Industry Relevance |
 |---------|-------------|----------------|---------------------------|
-| **Predictive Maintenance** | LSTM-based RUL prediction with MSE loss | Reduces unplanned downtime by up to 40% | Aligns with Industrie 4.0 predictive maintenance initiatives |
+| **Predictive Maintenance** | LSTM-based RUL prediction with asymmetric safety-first loss | Reduces unplanned downtime by up to 40% | Aligns with Industrie 4.0 predictive maintenance initiatives |
 | **GenAI-Powered Reports** | Llama 3.2 reports maintenance recommendations via RAG (with template fallback) | Saves technician time on documentation | Meets VDI/VDE standards for maintenance documentation |
 | **Real-time Monitoring** | Prometheus/Grafana stack with custom dashboards | Enables proactive maintenance scheduling | Supports DIN EN ISO 13379 condition monitoring standards |
 | **Microservices Architecture** | Containerized, scalable services | Easy deployment and horizontal scaling | Compatible with German Industrie 4.0 reference architecture (RAMI 4.0) |

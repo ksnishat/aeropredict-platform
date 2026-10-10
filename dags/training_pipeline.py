@@ -6,11 +6,18 @@ import sys
 import os
 
 # Add src to path so Airflow can find your scripts
-sys.path.append("/opt/airflow/dags/src")
+sys.path.append(os.getenv("AEROPREDICT_SRC", "/opt/airflow/dags/src"))
 
 # Import your functions
 from train_model import train
 from rag_inference import generate_maintenance_report
+
+
+def retrain_model(**context):
+    """Run training and return only JSON-serializable summary for XCom."""
+    model = train(data_path=os.getenv("AEROPREDICT_DATA", "/opt/airflow/data/train_FD001.txt"))
+    return {"status": "trained", "parameters": sum(p.numel() for p in model.parameters())}
+
 
 # Default Arguments
 default_args = {
@@ -32,7 +39,7 @@ with DAG(
     # Task 1: Retrain the Model (GPU)
     train_task = PythonOperator(
         task_id='retrain_lstm_model',
-        python_callable=train
+        python_callable=retrain_model
     )
 
     # Task 2: Generate Report (GenAI)

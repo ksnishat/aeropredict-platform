@@ -5,11 +5,13 @@ from pypdf import PdfReader
 
 def generate_maintenance_report(rul_prediction):
     print(f"🤖 GenAI Technician activating for RUL: {rul_prediction}...")
-    
-    # 1. DEFINE PATHS (PDF is in data/raw based on your tree)
-    # Airflow sees it at /opt/airflow/data/raw/Damage Propagation Modeling.pdf
-    pdf_path = "/opt/airflow/data/raw/Damage Propagation Modeling.pdf"
-    
+
+    ollama_host = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+    pdf_path = os.getenv(
+        "MANUAL_PATH", "/opt/airflow/data/raw/Damage Propagation Modeling.pdf"
+    )
+
     # 2. EXTRACT KNOWLEDGE FROM PDF
     knowledge_base = ""
     try:
@@ -43,9 +45,9 @@ def generate_maintenance_report(rul_prediction):
     """
     
     # 4. SEND TO OLLAMA
-    url = "http://host.docker.internal:11434/api/generate"
+    url = f"{ollama_host}/api/generate"
     payload = {
-        "model": "llama3.2", 
+        "model": ollama_model, 
         "prompt": prompt,
         "stream": False
     }

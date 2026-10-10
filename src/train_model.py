@@ -92,11 +92,11 @@ def train(
         val_split: Fraction of data for validation
         data_path: Path to the C-MAPSS training data file
     """
-    # 1. Config MLOps
-    mlflow.set_tracking_uri("http://mlflow:5000")
-    os.environ["MLFLOW_S3_ENDPOINT_URL"] = "http://minio:9000"
-    os.environ["AWS_ACCESS_KEY_ID"] = "minio"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "minio123"
+    # 1. Config MLOps (overridable for local runs outside docker-compose)
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+    os.environ.setdefault("MLFLOW_S3_ENDPOINT_URL", os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000"))
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", os.getenv("AWS_ACCESS_KEY_ID", "minio"))
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", os.getenv("AWS_SECRET_ACCESS_KEY", "minio123"))
 
     # 2. Load Data
     print("Starting Automated Training...")
@@ -204,8 +204,11 @@ def train(
         mlflow.log_metric("final_val_loss", val_loss)
         mlflow.log_metric("best_val_loss", best_val_loss)
 
-        # Log model
-        mlflow.pytorch.log_model(model, "model")
+        # Log model (pickle serialization keeps numpy input_example working)
+        input_example = X[:1]
+        mlflow.pytorch.log_model(
+            model, "model", input_example=input_example, serialization_format="pickle"
+        )
         print(f"Model saved to MLflow! Best val loss: {best_val_loss:.4f}")
 
         return model
