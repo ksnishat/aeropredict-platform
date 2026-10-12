@@ -45,16 +45,30 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to Kubernetes
-        if: env.DEPLOY_K8S == 'true'
+      # The kubeconfig must be written to disk before kubectl runs, and kubectl
+      # must be installed. The previous version passed KUBE_CONFIG_DATA as an
+      # env var only, so kubectl had no cluster to talk to. It also gated the
+      # step on `if: env.DEPLOY_K8S`, but step-level `env:` is not available to
+      # that step's own `if:` expression, so the condition never evaluated true.
+      - name: Install kubectl
+        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.29.0
+
+      - name: Write kubeconfig
+        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
         run: |
-          echo "Deploying to Kubernetes..."
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Deploy to Kubernetes
+        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+        run: |
+          echo "Deploying aeropredict-api..."
           kubectl set image deployment/aeropredict-api \
-            aeropredict-api=ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }} \
-            --record
-        env:
-          DEPLOY_K8S: ${{ secrets.DEPLOY_K8S }}
-          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+            aeropredict-api=ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
 
       - name: Update deployment status
         run: |
