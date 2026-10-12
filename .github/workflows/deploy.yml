@@ -8,6 +8,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      # Job-level env, because the `secrets` context is not available in a
+      # step-level `if:` expression.
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
     steps:
       - uses: actions/checkout@v3
 
@@ -51,20 +55,20 @@ jobs:
       # step on `if: env.DEPLOY_K8S`, but step-level `env:` is not available to
       # that step's own `if:` expression, so the condition never evaluated true.
       - name: Install kubectl
-        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+        if: env.KUBE_CONFIG_DATA != ''
         uses: azure/setup-kubectl@v3
         with:
           version: v1.29.0
 
       - name: Write kubeconfig
-        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+        if: env.KUBE_CONFIG_DATA != ''
         run: |
           mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > "$HOME/.kube/config"
+          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
       - name: Deploy to Kubernetes
-        if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
+        if: env.KUBE_CONFIG_DATA != ''
         run: |
           echo "Deploying aeropredict-api..."
           kubectl set image deployment/aeropredict-api \
