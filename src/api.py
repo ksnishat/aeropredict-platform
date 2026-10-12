@@ -151,6 +151,11 @@ def get_genai_report(rul: int) -> str:
 async def lifespan(app: FastAPI):
     """Load model at startup."""
     load_model()
+    # Publish the gauge at startup. Setting it only inside /predict means the
+    # metric reads 0 until the first request, so a dashboard shows "model not
+    # loaded" on a healthy service that simply has not been called yet.
+    if MODEL_LOADED_GAUGE is not None:
+        MODEL_LOADED_GAUGE.set(1 if model_loaded else 0)
     yield
 
 

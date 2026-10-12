@@ -33,7 +33,9 @@ groups:
 
       # Airflow DAG failure
       - alert: AirflowDAGFailure
-        expr: airflow_dag_run_state == "failed"
+        # PromQL cannot compare an instant vector to a string literal. The
+        # state is exposed as a numeric gauge, so compare against 0.
+        expr: airflow_dag_run_state == 0
         for: 1m
         labels:
           severity: critical

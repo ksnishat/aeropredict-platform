@@ -196,6 +196,10 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      # Retention and WAL compression are CLI-only options, not
+      # config-file fields, so they are set here.
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.wal-compression'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'

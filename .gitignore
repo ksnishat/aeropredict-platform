@@ -66,6 +66,7 @@ serving/
 mlruns/
 mlruns/*
 mlruns_*/
+mlflow.db
 
 # --- Local datasets (tracked with DVC) ---
 *-main/

@@ -46,7 +46,8 @@ rule_files:
   - "alert_rules.yml"
 
 # Storage
-storage:
-  tsdb:
-    retention: 15d
-    wal_compression: true
+# Retention and WAL compression are command-line flags, not config-file
+# options: Prometheus rejects `retention` with "cannot unmarshal !!str `15d`
+# into config.plain" and `wal_compression` with "field wal_compression not
+# found". They are set via --storage.tsdb.retention.time and
+# --storage.tsdb.wal-compression in docker-compose.yml instead.
