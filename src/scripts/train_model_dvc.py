@@ -6,7 +6,6 @@ Logs metrics and model to MLflow.
 """
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -14,10 +13,10 @@ from pathlib import Path
 
 import mlflow
 import mlflow.pytorch
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -30,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 class AirglowLSTM(nn.Module):
     def __init__(self, input_size=21, hidden_size=50, num_layers=2, dropout=0.2):
-        super(AirglowLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, 
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
                            batch_first=True, dropout=dropout)
         self.fc = nn.Linear(hidden_size, 1)
 
@@ -41,7 +40,7 @@ class AirglowLSTM(nn.Module):
         return self.fc(out)
 
 
-def train_model(gold_path: Path, dataset_id: str, epochs: int = 10, 
+def train_model(gold_path: Path, dataset_id: str, epochs: int = 10,
                 lr: float = 0.001, batch_size: int = 32):
     """
     Train LSTM model on gold layer features.

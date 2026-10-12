@@ -1,7 +1,4 @@
 """Tests for the BentoML RUL prediction service."""
-import pytest
-from unittest.mock import patch, MagicMock
-import numpy as np
 
 
 class TestBentoMLService:

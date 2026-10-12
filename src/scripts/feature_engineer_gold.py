@@ -12,8 +12,9 @@ import argparse
 import json
 import logging
 from pathlib import Path
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 from src.utils.logging_config import setup_logging
 
@@ -41,6 +42,7 @@ def engineer_features(silver_path: Path, gold_path: Path, dataset_id: str):
 
     df = pd.read_csv(input_file)
     original_rows = len(df)
+    logger.info(f"{dataset_id}: {original_rows} input rows")
 
     # Group by engine ID and create sequences
     all_sequences = []

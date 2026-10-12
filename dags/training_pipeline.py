@@ -1,9 +1,10 @@
 # FILE: dags/training_pipeline.py
+import os
+import sys
+from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime, timedelta
-import sys
-import os
 
 # Add src to path so Airflow can find the project modules. This must point
 # outside /opt/airflow/dags: Airflow scans that directory for DAG files, so

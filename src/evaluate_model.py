@@ -7,23 +7,22 @@ Evaluates the trained LSTM model on test data and generates:
 - Training/validation loss curves
 - Residual analysis
 """
-import torch
-import torch.nn as nn
-import numpy as np
-import pandas as pd
-import mlflow
-import mlflow.pytorch
 import os
 import sys
+
 import matplotlib
+import mlflow
+import mlflow.pytorch
+import numpy as np
+import torch
+
 matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
-from pathlib import Path
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from data_preprocessing import load_and_clean_data
-from train_model import AirglowLSTM
 
 
 def evaluate_model(
@@ -66,7 +65,7 @@ def evaluate_model(
     rmse = np.sqrt(mean_squared_error(actuals, predictions))
     mape = np.mean(np.abs((actuals - predictions) / np.maximum(actuals, 1))) * 100
 
-    print(f"Test Metrics:")
+    print("Test Metrics:")
     print(f"  MAE:  {mae:.2f} cycles")
     print(f"  RMSE: {rmse:.2f} cycles")
     print(f"  MAPE: {mape:.2f}%")

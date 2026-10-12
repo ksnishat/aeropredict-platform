@@ -22,7 +22,7 @@ Design notes
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 # ChromaDB requires sqlite3 >= 3.35.0. The Airflow container runs on Debian
 # bullseye, which ships 3.34.1, so importing chromadb there raises
@@ -32,21 +32,21 @@ try:  # pragma: no cover - depends on the runtime environment
     import sqlite3
 
     if sqlite3.sqlite_version_info < (3, 35, 0):
-        import pysqlite3  # type: ignore[import-not-found]
-
         import sys
+
+        import pysqlite3  # type: ignore[import-not-found]
 
         sys.modules["sqlite3"] = pysqlite3
 except ImportError:  # pragma: no cover
     pass
 
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.document_loaders import TextLoader
 from langchain_community.llms import Ollama
-from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_LLM_MODEL = "llama3.2"
@@ -94,12 +94,12 @@ class MaintenanceRAG:
 
     def __init__(
         self,
-        knowledge_base_path: Optional[str] = None,
-        persist_directory: Optional[str] = None,
-        collection_name: Optional[str] = None,
-        embedding_model: Optional[str] = None,
-        llm_model: Optional[str] = None,
-        ollama_base_url: Optional[str] = None,
+        knowledge_base_path: str | None = None,
+        persist_directory: str | None = None,
+        collection_name: str | None = None,
+        embedding_model: str | None = None,
+        llm_model: str | None = None,
+        ollama_base_url: str | None = None,
     ) -> None:
         self.kb_path = knowledge_base_path or os.getenv(
             "KNOWLEDGE_BASE_PATH", DEFAULT_KB_PATH
@@ -120,7 +120,7 @@ class MaintenanceRAG:
 
         self.embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model_name)
         self.llm = Ollama(model=self.llm_model_name, base_url=self.ollama_base_url)
-        self.vector_db: Optional[Chroma] = None
+        self.vector_db: Chroma | None = None
         self.chain: Any = None
 
     # ------------------------------------------------------------------ ingest

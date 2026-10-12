@@ -4,12 +4,13 @@ Admin interface for experiment management and model version browsing
 """
 
 import os
+
 import mlflow
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_admin import Admin
-from flask_admin.contrib.mlflow import ModelView
-from flask_admin.base import BaseView, expose
 import requests
+from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask_admin.base import BaseView, expose
+
+from flask_admin import Admin
 
 # Configuration
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")

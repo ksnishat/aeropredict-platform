@@ -74,10 +74,15 @@ include = ["src*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Notebooks re-import the same names in each cell, which is normal in Jupyter
+# but trips F811. They are not linted.
+extend-exclude = ["notebooks", ".ipynb_checkpoints"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP"]
-ignore = ["E501"]
+# B008: FastAPI requires File(...)/Depends(...) in argument defaults.
+# C408: dict() calls in Dash layout definitions are intentional.
+ignore = ["E501", "B008", "C408"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -11,17 +11,16 @@ Refactored from src/train_model.py to use PyTorch Lightning for:
 Usage:
     python src/scripts/train_lightning.py --epochs 50 --batch_size 32
 """
+import argparse
 import os
 import sys
-import argparse
-from pathlib import Path
 
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import MLFlowLogger
+from torch.utils.data import DataLoader, TensorDataset
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

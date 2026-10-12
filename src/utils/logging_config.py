@@ -3,21 +3,19 @@ AeroPredict Logging Configuration
 Structured JSON logging with request context
 """
 
-import json
 import logging
 import sys
-import uuid
 from contextvars import ContextVar
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pythonjsonlogger import jsonlogger
 
 from src.config import settings
 
-
 # Context variable for request tracking
-request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
-user_id_var: ContextVar[Optional[str]] = ContextVar("user_id", default=None)
+request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+user_id_var: ContextVar[str | None] = ContextVar("user_id", default=None)
 
 
 class RequestContextFilter(logging.Filter):
@@ -32,7 +30,7 @@ class RequestContextFilter(logging.Filter):
 class CustomJsonFormatter(jsonlogger.JsonFormatter):
     """Custom JSON formatter with additional fields"""
 
-    def add_fields(self, log_record: Dict[str, Any], record: logging.LogRecord, message_dict: Dict[str, Any]) -> None:
+    def add_fields(self, log_record: dict[str, Any], record: logging.LogRecord, message_dict: dict[str, Any]) -> None:
         super().add_fields(log_record, record, message_dict)
 
         # Standard fields
@@ -79,7 +77,7 @@ def get_console_handler() -> logging.Handler:
 
 
 def setup_logging(
-    log_level: Optional[str] = None,
+    log_level: str | None = None,
     json_format: bool = True,
     include_console: bool = False
 ) -> logging.Logger:
@@ -155,9 +153,9 @@ def log_prediction(
     logger: logging.Logger,
     engine_id: str,
     predicted_rul: float,
-    actual_rul: Optional[float] = None,
-    confidence: Optional[float] = None,
-    processing_time_ms: Optional[float] = None,
+    actual_rul: float | None = None,
+    confidence: float | None = None,
+    processing_time_ms: float | None = None,
 ) -> None:
     """Log prediction with structured data"""
     extra = {
@@ -197,10 +195,10 @@ def log_model_operation(
     logger: logging.Logger,
     operation: str,
     model_name: str,
-    version: Optional[str] = None,
+    version: str | None = None,
     status: str = "success",
-    duration_ms: Optional[float] = None,
-    error: Optional[str] = None,
+    duration_ms: float | None = None,
+    error: str | None = None,
 ) -> None:
     """Log model operations (load, train, register, transition)"""
     extra = {
@@ -226,8 +224,8 @@ def log_api_request(
     path: str,
     status_code: int,
     duration_ms: float,
-    request_size: Optional[int] = None,
-    response_size: Optional[int] = None,
+    request_size: int | None = None,
+    response_size: int | None = None,
 ) -> None:
     """Log API request with structured data"""
     logger.info(

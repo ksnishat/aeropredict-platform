@@ -12,8 +12,8 @@ import argparse
 import json
 import logging
 from pathlib import Path
+
 import pandas as pd
-import numpy as np
 
 from src.utils.logging_config import setup_logging
 

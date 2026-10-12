@@ -1,11 +1,12 @@
+from datetime import datetime
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime
-import sys
+
 
 def check_spark():
-    import pyspark
     import mlflow
+    import pyspark
     print(f" SUCCESS! Spark version {pyspark.__version__} is ready.")
     print(f" SUCCESS! MLflow version {mlflow.__version__} is ready.")
 

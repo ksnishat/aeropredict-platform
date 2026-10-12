@@ -40,7 +40,7 @@ jobs:
       - name: Lint with ruff
         run: |
           pip install ruff
-          ruff check . --output-format=github || true
+          ruff check . --output-format=github
 
       - name: Run tests
         run: |

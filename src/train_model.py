@@ -10,15 +10,15 @@ on NASA C-MAPSS sensor data. Includes:
 - MLflow experiment tracking with full metrics logging
 - Model checkpointing (best + last)
 """
+import os
+import sys
+
+import mlflow
+import mlflow.pytorch
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import mlflow
-import mlflow.pytorch
-import os
-import sys
-import numpy as np
-from pathlib import Path
 from packaging.version import Version
 
 # Add the parent directory to path so we can import 'src' if needed
@@ -37,7 +37,7 @@ class AirglowLSTM(nn.Module):
     """
 
     def __init__(self, input_size=21, hidden_size=50, num_layers=2):
-        super(AirglowLSTM, self).__init__()
+        super().__init__()
         self.lstm = nn.LSTM(
             input_size, hidden_size, num_layers,
             batch_first=True, dropout=0.2

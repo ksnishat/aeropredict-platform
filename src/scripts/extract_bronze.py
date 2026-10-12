@@ -10,12 +10,11 @@ Usage:
 
 import argparse
 import logging
-import os
-import shutil
 from pathlib import Path
+
 import pandas as pd
 
-from src.utils.logging_config import setup_logging, log_api_request
+from src.utils.logging_config import setup_logging
 
 # Setup logging
 setup_logging(json_format=True, include_console=True)
@@ -42,7 +41,7 @@ def extract_dataset(source_dir: str, output_dir: str, dataset_name: str = None):
         dataset_name: Specific dataset (FD001-FD004), None for all
     """
     source_path = Path(source_dir)
-    output_path = Path(output_path)
+    output_path = Path(output_dir)
 
     if not source_path.exists():
         logger.error(f"Source directory not found: {source_path}")

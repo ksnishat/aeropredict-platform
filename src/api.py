@@ -6,20 +6,19 @@ Endpoints:
 - POST /predict : Upload sensor data, get RUL prediction + maintenance report
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from pydantic import BaseModel
-import pandas as pd
-import numpy as np
 import io
 import os
-import requests
-from contextlib import asynccontextmanager
-from typing import Optional
 import time
+from contextlib import asynccontextmanager
+
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 # Prometheus instrumentation
 try:
-    from prometheus_client import Counter, Histogram, Gauge
+    from prometheus_client import Counter, Gauge, Histogram
 
     PREDICTION_COUNT = Counter(
         "aeropredict_predictions_total",
@@ -53,7 +52,6 @@ except ImportError:
 # Try to import PyTorch for model loading
 try:
     import torch
-    import torch.nn as nn
     PYTORCH_AVAILABLE = True
 except ImportError:
     PYTORCH_AVAILABLE = False
@@ -222,16 +220,16 @@ async def predict_rul(file: UploadFile = File(...)):
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/metrics")
 def metrics():
     """Prometheus metrics endpoint."""
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     from fastapi.responses import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     PREDICTION_COUNT.labels(risk_level="ANY").inc(0)  # ensure series registered
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

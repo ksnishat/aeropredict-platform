@@ -17,13 +17,11 @@ Usage:
 """
 import os
 import sys
-import numpy as np
-import pandas as pd
-from pathlib import Path
 
 import bentoml
+import numpy as np
+import pandas as pd
 from pydantic import BaseModel, Field
-from typing import List, Optional
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,10 +31,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class SensorDataInput(BaseModel):
     """Input schema for RUL prediction."""
-    sensor_data: List[List[float]] = Field(
+    sensor_data: list[list[float]] = Field(
         ..., description="2D array of sensor readings (timesteps x features)"
     )
-    engine_id: Optional[str] = Field(default=None, description="Engine identifier")
+    engine_id: str | None = Field(default=None, description="Engine identifier")
 
 
 class PredictionResponse(BaseModel):
@@ -84,6 +82,7 @@ def predict_rul(input_file) -> dict:
     Expected format: NASA C-MAPSS style (space-separated, no header).
     """
     import io
+
     import torch
 
     # Read CSV
@@ -205,7 +204,7 @@ class RULPredictor:
         self.model = model
         self.model_loaded = model_loaded
 
-    def predict(self, sensor_data: List[List[float]]) -> List[int]:
+    def predict(self, sensor_data: list[list[float]]) -> list[int]:
         """Batch prediction for multiple sensor sequences."""
         import torch
 

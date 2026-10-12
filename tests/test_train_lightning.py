@@ -1,8 +1,7 @@
 """Tests for the PyTorch Lightning LSTM training module."""
+
 import pytest
-from unittest.mock import patch, MagicMock
 import torch
-from torch.utils.data import TensorDataset, DataLoader
 
 
 class TestAirglowLSTM:
@@ -110,6 +109,7 @@ class TestTrainLightning:
     def test_function_signature(self):
         """Train function should accept expected parameters."""
         import inspect
+
         from src.scripts.train_lightning import train_lightning
 
         sig = inspect.signature(train_lightning)
@@ -127,6 +127,7 @@ class TestTrainLightning:
     def test_function_defaults(self):
         """Train function should have sensible defaults."""
         import inspect
+
         from src.scripts.train_lightning import train_lightning
 
         sig = inspect.signature(train_lightning)

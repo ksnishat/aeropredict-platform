@@ -1,7 +1,7 @@
 """Tests for the AeroPredict LSTM training module."""
 import pytest
 import torch
-import numpy as np
+
 from src.train_model import AirglowLSTM, AsymmetricLoss
 
 
@@ -110,6 +110,7 @@ class TestTrainingFunction:
     def test_train_function_signature(self):
         """Train function should accept expected parameters."""
         import inspect
+
         from src.train_model import train
 
         sig = inspect.signature(train)
@@ -126,6 +127,7 @@ class TestTrainingFunction:
     def test_train_function_defaults(self):
         """Train function should have sensible defaults."""
         import inspect
+
         from src.train_model import train
 
         sig = inspect.signature(train)

@@ -52,14 +52,14 @@ def get_commit_time(date_obj):
         hour = random.randint(10, 16)
     else:
         hour = random.randint(21, 23)
-    
+
     return date_obj.replace(hour=hour, minute=random.randint(0, 59), second=random.randint(0, 59))
 
 def run_git(cmd, date_obj):
     """Executes git command. If it fails (empty), retries as --allow-empty."""
     final_date = get_commit_time(date_obj)
     date_str = final_date.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     env = os.environ.copy()
     env["GIT_AUTHOR_DATE"] = date_str
     env["GIT_COMMITTER_DATE"] = date_str
@@ -67,7 +67,7 @@ def run_git(cmd, date_obj):
     env["GIT_AUTHOR_EMAIL"] = AUTHOR_EMAIL
     env["GIT_COMMITTER_NAME"] = AUTHOR_NAME
     env["GIT_COMMITTER_EMAIL"] = AUTHOR_EMAIL
-    
+
     try:
         subprocess.run(cmd, shell=True, env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"✅ [{date_str}] {cmd[15:60]}...")
@@ -101,10 +101,10 @@ def main():
                 # Try to add file, but don't crash if it adds nothing
                 if m_file == "." or os.path.exists(m_file):
                     subprocess.run(f"git add {m_file}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
+
                 # Commit (run_git handles the crash if file was empty)
                 run_git(f'git commit -m "{m_msg}"', current_date)
-                
+
                 milestone_idx += 1
                 current_date += timedelta(days=1)
                 continue

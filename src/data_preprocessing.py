@@ -1,8 +1,9 @@
 # FILE: src/data_preprocessing.py
-import pandas as pd
 import numpy as np
+import pandas as pd
 import torch
 from sklearn.preprocessing import MinMaxScaler
+
 
 def load_and_clean_data(file_path):
     """

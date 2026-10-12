@@ -3,9 +3,9 @@
 Tests for the FastAPI backend, data preprocessing, and model inference.
 """
 
-import json
 import pytest
 from fastapi.testclient import TestClient
+
 from src.api import app
 
 
