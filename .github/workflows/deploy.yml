@@ -8,6 +8,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Pushing to ghcr.io requires packages: write. Without it the build
+    # succeeds and the push is denied with "installation not allowed to
+    # Create organization package".
+    permissions:
+      contents: read
+      packages: write
     env:
       # Job-level env, because the `secrets` context is not available in a
       # step-level `if:` expression.
