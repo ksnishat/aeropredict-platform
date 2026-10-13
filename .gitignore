@@ -89,3 +89,6 @@ coverage.xml
 
 # --- MinIO local data (created by start_all_stacks.sh) ---
 .minio-data/
+
+# --- live stack logs (created by run_stack.sh) ---
+.stack-logs/

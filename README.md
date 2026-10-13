@@ -256,7 +256,7 @@ are excluded from CI (which has no model checkpoint or dataset) and run against
 real services instead of an in-process `TestClient`:
 
 ```bash
-./start_all_stacks.sh aeropredict
+./run_stack.sh
 LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
 ```
 
@@ -270,9 +270,9 @@ Two helper scripts at the repository root start the API plus Prometheus and
 Grafana for every project, and provision the dashboards:
 
 ```bash
-./start_all_stacks.sh aeropredict    # API + MLflow + MinIO + Prometheus + Grafana
-python3 provision_dashboards.py      # datasource + dashboard
-./verify_live_stack.sh aeropredict   # 7 checks, exit 0 when all pass
+./run_stack.sh                      # API + MLflow + MinIO + Prometheus + Grafana
+python3 provision_dashboards.py aeropredict   # datasource + dashboard
+./verify_stack.sh                    # 7 checks, exit 0 when all pass
 ```
 
 | Service | URL | Credentials |
@@ -376,7 +376,9 @@ aeropredict-platform/
 │   └── utils/logging_config.py # Structured JSON logging
 ├── knowledge_base/
 │   └── turbofan_maintenance.txt # RAG source: degradation modes, RUL bands, actions
-├── tests/                      # 43 tests (API, data, model, service)
+├── tests/                      # 71 unit + 8 integration tests
+├── run_stack.sh                # Start API + MLflow + MinIO + Prometheus + Grafana
+├── verify_stack.sh             # 7 live-stack health checks
 ├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
 ├── data/                       # C-MAPSS datasets and the persisted Chroma index
 ├── helm-chart/                 # Helm chart for Kubernetes
