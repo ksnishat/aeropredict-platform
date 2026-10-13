@@ -55,3 +55,11 @@ RUN pip install --no-cache-dir \
 # the documented pysqlite3-binary shim instead: it bundles a modern sqlite3 and
 # is aliased over the stdlib module in src/rag_inference.py.
 RUN pip install --no-cache-dir pysqlite3-binary
+
+# Training exports the TorchScript model and scaler to /opt/airflow/models,
+# which is a named volume. Docker initialises a fresh named volume from the
+# image's directory contents and ownership, so creating it here as the airflow
+# user means the volume is writable without a manual chown.
+USER root
+RUN mkdir -p /opt/airflow/models && chown airflow:root /opt/airflow/models
+USER airflow

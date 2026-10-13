@@ -219,8 +219,16 @@ def train(
         # it rather than failing the whole training run.
         if Version(mlflow.__version__) >= Version("3.0.0"):
             log_kwargs["serialization_format"] = "pickle"
-        mlflow.pytorch.log_model(model, "model", **log_kwargs)
-        print(f"Model saved to MLflow! Best val loss: {best_val_loss:.4f}")
+        # Best-effort: the tracking server's artifact root may be a path this
+        # process cannot write to (for example a host directory when training
+        # runs inside a container). Params and metrics still reach the backend
+        # store over HTTP, and the model is exported to model_dir below, so a
+        # failed artifact upload must not fail an otherwise successful run.
+        try:
+            mlflow.pytorch.log_model(model, "model", **log_kwargs)
+            print(f"Model saved to MLflow! Best val loss: {best_val_loss:.4f}")
+        except Exception as e:
+            print(f"WARNING: could not log model to MLflow: {e}")
 
         # 8. Export for serving. The API loads a TorchScript module and needs
         # the exact scaler used here, otherwise it feeds the model
@@ -228,7 +236,6 @@ def train(
         os.makedirs(model_dir, exist_ok=True)
         scaler_path = os.path.join(model_dir, "scaler.joblib")
         joblib.dump(scaler, scaler_path)
-        mlflow.log_artifact(scaler_path)
 
         model_cpu = model.to("cpu").eval()
         # Use script, not trace: tracing bakes the initial hidden state in as a
@@ -237,8 +244,17 @@ def train(
         scripted = torch.jit.script(model_cpu)
         torchscript_path = os.path.join(model_dir, "lstm_best.pt")
         scripted.save(torchscript_path)
-        mlflow.log_artifact(torchscript_path)
         print(f"Exported TorchScript model to {torchscript_path} and scaler to {scaler_path}")
+
+        # Artifact logging is best-effort. The tracking server may use an
+        # artifact root this process cannot write to (for example a host path
+        # when training runs inside a container), and losing the run's
+        # artifacts must not fail an otherwise successful training job.
+        for artifact in (scaler_path, torchscript_path):
+            try:
+                mlflow.log_artifact(artifact)
+            except Exception as e:
+                print(f"WARNING: could not log {artifact} to MLflow: {e}")
 
         return model
 

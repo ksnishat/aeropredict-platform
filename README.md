@@ -135,24 +135,59 @@ NVIDIA RTX 3050 Ti (4 GB). Follow [Quickstart](#quickstart) to reproduce them.
 | Features | 21 | C-MAPSS sensor channels (settings excluded) |
 | Model | 2-layer LSTM (hidden 50) | 35,051 parameters |
 | Loss | Asymmetric MSE (`late_penalty=5.0`) | Penalises late (under-estimated) RUL more |
-| Best validation loss | ~11,700 | 30 epochs |
-| MAE (held-out slice) | **53.70 cycles** | 2,000 windows |
-| RMSE (held-out slice) | 63.55 cycles | 2,000 windows |
+| RUL target | `min(RUL, 125)` | Piecewise-linear cap (see below) |
+| Best validation loss | ~280 | 60 epochs, early stopping |
+| **Test MAE** | **9.51 cycles** | Full FD001 test set, 8,162 windows |
+| **Test RMSE** | **13.58 cycles** | Full FD001 test set |
+| Test MAPE | 12.43% | Full FD001 test set |
 
-### Known limitation (honest disclosure)
+These are in line with published C-MAPSS FD001 results (single-model MAE is
+typically 10–16 cycles). Evaluate them yourself:
 
-The current LSTM exhibits **mean-collapse**: it converges to a near-constant RUL
-prediction. This is an architectural limitation of the model/loss rather than of
-the data pipeline — both plain MSE and the asymmetric loss collapse identically
-under controlled testing. Repairing the windowing bug below improved MAE from
-**118.5 to 53.7 (2.2×)**, but does not by itself resolve the collapse.
+```bash
+python -c "
+import sys; sys.path.insert(0, 'src')
+from evaluate_model import evaluate_model
+evaluate_model(
+    test_data_path='CMAPSSData/test_FD001.txt',
+    rul_file='CMAPSSData/RUL_FD001.txt',
+)
+"
+```
 
-Two concrete next steps are tracked in the repository backlog:
+### Three bugs that made the model useless (and how they were fixed)
 
-1. Piecewise-linear RUL target (cap the label, e.g. `min(RUL, 125)`).
-2. Replace the LSTM with a temporal-convolution or small Transformer encoder.
+The model originally predicted a near-constant RUL. Three independent defects
+compounded; all three are now fixed and covered by regression tests.
 
-This is documented rather than hidden so the metrics above are not overstated.
+**1. Uncapped training target caused mean-collapse.** 39% of FD001 samples have
+RUL > 125, and those early cycles are indistinguishable from one another. Under
+MSE the optimal prediction for that mass is the mean, so the network learned to
+ignore its input. Verified on the old checkpoint: it returned `118.155` for
+every input, and outputs varied by only **3.8 cycles** across 5×-scaled inputs.
+The target is now capped at 125 (the standard C-MAPSS treatment, configurable
+via `rul_cap`). Output spread after the fix is **101.9 cycles**.
+
+**2. The test target was fabricated.** A test engine's trajectory is truncated
+before failure, so `max_cycle - cycle` is *not* its RUL — it always yields 0 at
+the final observed cycle, while the true value averages 75.5 cycles. Evaluation
+now requires the matching `RUL_FDxxx.txt` and anchors the target there.
+
+**3. Serving z-scored the upload while training MinMax-scaled it.** The API fed
+the model out-of-distribution inputs. Training now persists the fitted scaler
+(`models/scaler.joblib`) and serving reuses it via a shared
+`preprocess_for_inference()` helper.
+
+Fixing all three took test MAE from **53.70 → 9.51 cycles (5.6×)**.
+
+### Remaining limitation (honest disclosure)
+
+The LSTM is a single model with no ensembling or uncertainty quantification.
+Published state-of-the-art FD001 results reach MAE ≈ 8–10 cycles using
+ensembles or attention architectures, so there is still headroom. The next
+tracked step is replacing the LSTM with a temporal-convolution or small
+Transformer encoder. This is documented rather than hidden so the metrics above
+are not overstated.
 
 ## Quickstart
 
@@ -281,9 +316,11 @@ Typical workflow:
 
 ```bash
 # /predict takes a multipart file upload, not a JSON body.
-head -60 Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData/train_FD001.txt > /tmp/sample.csv
+# A single engine's rows work best: the API takes the last 50 cycles.
+awk '$1==100' Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData/test_FD001.txt > /tmp/sample.csv
 curl -X POST http://localhost:8000/predict -F "file=@/tmp/sample.csv"
-# {"rul":118,"risk_level":"LOW","maintenance_recommendation":"Normal Operation: Standard maintenance recommended."}
+# {"rul":20,"risk_level":"CRITICAL","maintenance_recommendation":"..."}
+# Engine 100's published RUL is 20 cycles.
 ```
 
 ## Configuration
@@ -295,6 +332,7 @@ Endpoints are configurable so the code runs outside docker-compose:
 | `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow tracking server |
 | `MLFLOW_S3_ENDPOINT_URL` | `http://minio:9000` | Artifact store (MinIO) |
 | `MODEL_PATH` | `models/lstm_best.pt` | TorchScript checkpoint for the API |
+| `SCALER_PATH` | `models/scaler.joblib` | Feature scaler fitted during training |
 | `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
 | `KNOWLEDGE_BASE_PATH` | `knowledge_base/turbofan_maintenance.txt` | RAG source document |

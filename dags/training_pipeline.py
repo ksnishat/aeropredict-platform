@@ -25,12 +25,18 @@ def retrain_model(**context):
     """
     from train_model import train
 
+    # /opt/airflow/src is a read-only bind mount, so the exported model and
+    # scaler must go somewhere the container can write. The API reads them from
+    # MODEL_PATH/SCALER_PATH, which default to this directory.
+    model_dir = os.getenv("AEROPREDICT_MODEL_DIR", "/opt/airflow/models")
     model = train(
-        data_path=os.getenv("AEROPREDICT_DATA", "/opt/airflow/data/train_FD001.txt")
+        data_path=os.getenv("AEROPREDICT_DATA", "/opt/airflow/data/train_FD001.txt"),
+        model_dir=model_dir,
     )
     return {
         "status": "trained",
         "parameters": sum(p.numel() for p in model.parameters()),
+        "model_dir": model_dir,
     }
 
 

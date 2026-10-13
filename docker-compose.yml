@@ -121,6 +121,9 @@ services:
       # Named volume, not a bind mount: a host ./logs directory owned by
       # root is not writable by the airflow user and Airflow fails to start.
       - airflow_logs:/opt/airflow/logs
+      # Training exports the TorchScript model and scaler here. ./src is a
+      # read-only bind mount, so the exports need their own writable volume.
+      - airflow_models:/opt/airflow/models
     ports:
       # 8081, not 8080: the documented port map reserves 8080 elsewhere and
       # every README and the system-design guide reference 8081.
@@ -175,6 +178,9 @@ services:
       # Named volume, not a bind mount: a host ./logs directory owned by
       # root is not writable by the airflow user and Airflow fails to start.
       - airflow_logs:/opt/airflow/logs
+      # Training exports the TorchScript model and scaler here. ./src is a
+      # read-only bind mount, so the exports need their own writable volume.
+      - airflow_models:/opt/airflow/models
     command: scheduler
     depends_on:
       - airflow-webserver
@@ -336,3 +342,4 @@ volumes:
   prometheus_data:
   aeropredict_models:
   airflow_logs:
+  airflow_models:
