@@ -126,7 +126,7 @@ def train_lightning(
     """
     # 1. Load Data
     print(f"Loading data from {data_path}...")
-    X, y = load_and_clean_data(data_path)
+    X, y, _ = load_and_clean_data(data_path)
 
     # 2. Train/Validation Split (time-series aware)
     n_samples = len(X)

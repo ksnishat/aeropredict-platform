@@ -13,6 +13,7 @@ on NASA C-MAPSS sensor data. Includes:
 import os
 import sys
 
+import joblib
 import mlflow
 import mlflow.pytorch
 import numpy as np
@@ -80,6 +81,8 @@ def train(
     patience: int = 10,
     val_split: float = 0.2,
     data_path: str = "/opt/airflow/data/train_FD001.txt",
+    rul_cap: int = 125,
+    model_dir: str = "models",
 ):
     """Train the LSTM model with validation, early stopping, and MLflow tracking.
 
@@ -92,6 +95,8 @@ def train(
         patience: Early stopping patience (epochs without improvement)
         val_split: Fraction of data for validation
         data_path: Path to the C-MAPSS training data file
+        rul_cap: Piecewise-linear RUL ceiling (see load_and_clean_data)
+        model_dir: Directory for the exported TorchScript model and scaler
     """
     # 1. Config MLOps (overridable for local runs outside docker-compose)
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
@@ -101,7 +106,7 @@ def train(
 
     # 2. Load Data
     print("Starting Automated Training...")
-    X, y = load_and_clean_data(data_path)
+    X, y, scaler = load_and_clean_data(data_path, rul_cap=rul_cap)
 
     # 3. Train/Validation Split (time-series aware: no shuffle)
     n_samples = len(X)
@@ -216,6 +221,24 @@ def train(
             log_kwargs["serialization_format"] = "pickle"
         mlflow.pytorch.log_model(model, "model", **log_kwargs)
         print(f"Model saved to MLflow! Best val loss: {best_val_loss:.4f}")
+
+        # 8. Export for serving. The API loads a TorchScript module and needs
+        # the exact scaler used here, otherwise it feeds the model
+        # out-of-distribution inputs and predictions are meaningless.
+        os.makedirs(model_dir, exist_ok=True)
+        scaler_path = os.path.join(model_dir, "scaler.joblib")
+        joblib.dump(scaler, scaler_path)
+        mlflow.log_artifact(scaler_path)
+
+        model_cpu = model.to("cpu").eval()
+        # Use script, not trace: tracing bakes the initial hidden state in as a
+        # CPU constant, so the exported module fails with "Input and hidden
+        # tensors are not at the same device" the moment it is moved to CUDA.
+        scripted = torch.jit.script(model_cpu)
+        torchscript_path = os.path.join(model_dir, "lstm_best.pt")
+        scripted.save(torchscript_path)
+        mlflow.log_artifact(torchscript_path)
+        print(f"Exported TorchScript model to {torchscript_path} and scaler to {scaler_path}")
 
         return model
 

@@ -18,6 +18,7 @@ import torch
 
 matplotlib.use("Agg")
 
+import joblib
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
@@ -28,6 +29,7 @@ from data_preprocessing import load_and_clean_data
 def evaluate_model(
     model_path: str = "models/lstm_best.pt",
     test_data_path: str = "/opt/airflow/data/test_FD001.txt",
+    rul_file: str = "/opt/airflow/data/RUL_FD001.txt",
     output_dir: str = "plots",
 ):
     """Evaluate the LSTM model and generate diagnostic plots.
@@ -35,6 +37,8 @@ def evaluate_model(
     Args:
         model_path: Path to the saved model
         test_data_path: Path to test data file
+        rul_file: Path to the matching RUL_FDxxx.txt ground-truth file. Without
+            it the test target is fabricated (see load_and_clean_data).
         output_dir: Directory to save plots
     """
     os.makedirs(output_dir, exist_ok=True)
@@ -50,8 +54,14 @@ def evaluate_model(
     model = model.to(device)
     model.eval()
 
-    # 2. Load Test Data
-    X_test, y_test = load_and_clean_data(test_data_path)
+    # 2. Load Test Data. Reuse the training scaler so evaluation matches the
+    # distribution the model was fitted on.
+    scaler_path = os.path.join(os.path.dirname(model_path), "scaler.joblib")
+    scaler = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
+    if scaler is None:
+        print(f"WARNING: no scaler at {scaler_path}; fitting one on the test file. "
+              "Metrics will not reflect serving behaviour.")
+    X_test, y_test, _ = load_and_clean_data(test_data_path, rul_file=rul_file, scaler=scaler)
     X_test = X_test.to(device)
     y_test = y_test.to(device)
 
@@ -71,7 +81,7 @@ def evaluate_model(
     print(f"  MAPE: {mape:.2f}%")
 
     # 5. Log to MLflow
-    mlflow.set_tracking_uri("http://mlflow:5000")
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     with mlflow.start_run(run_name="evaluation"):
         mlflow.log_metrics({
             "test_mae": mae,

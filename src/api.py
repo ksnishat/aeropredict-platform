@@ -8,13 +8,18 @@ Endpoints:
 
 import io
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 
-import numpy as np
+import joblib
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
+
+# Allow `python src/api.py` as well as `uvicorn src.api:app`.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from data_preprocessing import preprocess_for_inference
 
 # Prometheus instrumentation
 try:
@@ -59,13 +64,30 @@ except ImportError:
 # Global model state
 model = None
 model_loaded = False
+scaler = None
 
 
 def load_model():
-    """Load the trained LSTM model from MLflow or local path."""
-    global model, model_loaded
+    """Load the trained LSTM model and its feature scaler.
+
+    The scaler is not optional: the model was trained on MinMax-scaled sensor
+    readings, so serving must apply the identical transform. Without it the
+    model receives out-of-distribution inputs and its output is meaningless.
+    """
+    global model, model_loaded, scaler
 
     model_path = os.getenv("MODEL_PATH", "models/lstm_best.pt")
+    scaler_path = os.getenv("SCALER_PATH", os.path.join(os.path.dirname(model_path), "scaler.joblib"))
+
+    if os.path.exists(scaler_path):
+        try:
+            scaler = joblib.load(scaler_path)
+            print(f"Scaler loaded from {scaler_path}")
+        except Exception as e:
+            print(f"Scaler loading failed: {e}")
+            scaler = None
+    else:
+        print(f"No scaler found at {scaler_path}; falling back to baseline predictions")
 
     # Try MLflow first
     if MLFLOW_AVAILABLE:
@@ -100,9 +122,21 @@ def predict_rul_from_data(df: pd.DataFrame) -> int:
     Raises:
         ValueError: if the uploaded data cannot be interpreted as numeric sensor readings.
     """
-    global model, model_loaded
+    global model, model_loaded, scaler
 
-    # Coerce to numeric and reject non-numeric payloads with a 4xx-able error
+    if model_loaded and model is not None and scaler is not None:
+        try:
+            tensor = preprocess_for_inference(df, scaler)
+            with torch.no_grad():
+                pred = model(tensor).item()
+            return max(0, int(round(pred)))
+        except ValueError:
+            raise
+        except Exception as e:
+            print(f"Model inference failed: {e}")
+
+    # Baseline fallback: reject payloads that are not sensor data at all so the
+    # caller still gets a 422 rather than a fabricated number.
     numeric_df = df.apply(pd.to_numeric, errors="coerce")
     if numeric_df.isna().all().all() or numeric_df.empty:
         raise ValueError(
@@ -110,20 +144,6 @@ def predict_rul_from_data(df: pd.DataFrame) -> int:
         )
     numeric_df = numeric_df.dropna(axis=1, how="all").fillna(0.0)
 
-    if model_loaded and model is not None:
-        try:
-            # Preprocess: convert to tensor, normalize
-            data = numeric_df.values.astype(np.float32)
-            data = (data - data.mean()) / (data.std() + 1e-8)
-            sequence = data[-50:] if len(data) >= 50 else data
-            tensor = torch.from_numpy(sequence).unsqueeze(0)
-            with torch.no_grad():
-                pred = model(tensor).item()
-            return max(0, int(pred))
-        except Exception as e:
-            print(f"Model inference failed: {e}")
-
-    # Baseline: use sensor statistics to estimate RUL
     variance = float(numeric_df.var().mean())
     baseline_rul = max(20, int(150 - variance * 100))
     return baseline_rul
