@@ -100,3 +100,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: requires the live docker stack (set LIVE_STACK=1)",
+]

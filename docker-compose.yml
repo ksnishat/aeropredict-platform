@@ -29,7 +29,13 @@ services:
   # 2. OBJECT STORAGE (MinIO - S3 Compatible)
   # ==========================================
   minio:
-    image: minio/minio:latest
+    # minio/minio was removed from Docker Hub (pull access denied), so use the
+    # Bitnami legacy image. It defaults to uid 1001, which cannot write to a
+    # named volume created by an older root-owned container, hence user: root.
+    # The explicit command is required: Bitnami's own run.sh does not bind the
+    # console port, so the console would be unreachable without it.
+    image: bitnamilegacy/minio:latest
+    user: root
     container_name: aeropredict_minio
     ports:
       - "9000:9000"

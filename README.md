@@ -248,8 +248,21 @@ curl http://localhost:8000/metrics   # Prometheus metrics
 ## Running Tests
 
 ```bash
-PYTHONPATH=src pytest tests/ -v      # 43 passed
+PYTHONPATH=src pytest tests/ -v      # 71 passed, 8 skipped
 ```
+
+The 8 skipped tests are integration tests that need the live docker stack. They
+are excluded from CI (which has no model checkpoint or dataset) and run against
+real services instead of an in-process `TestClient`:
+
+```bash
+./start_all_stacks.sh aeropredict
+LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
+```
+
+They assert the API returns a real prediction for a known engine, that
+Prometheus is actually scraping the API (not merely healthy), and that MLflow,
+Grafana and MinIO are reachable.
 
 ## Monitoring & Live Demo
 
@@ -257,8 +270,9 @@ Two helper scripts at the repository root start the API plus Prometheus and
 Grafana for every project, and provision the dashboards:
 
 ```bash
-./start_all_stacks.sh aeropredict    # API + Prometheus + Grafana
+./start_all_stacks.sh aeropredict    # API + MLflow + MinIO + Prometheus + Grafana
 python3 provision_dashboards.py      # datasource + dashboard
+./verify_live_stack.sh aeropredict   # 7 checks, exit 0 when all pass
 ```
 
 | Service | URL | Credentials |
@@ -322,6 +336,12 @@ curl -X POST http://localhost:8000/predict -F "file=@/tmp/sample.csv"
 # {"rul":20,"risk_level":"CRITICAL","maintenance_recommendation":"..."}
 # Engine 100's published RUL is 20 cycles.
 ```
+
+> **Short histories.** The model consumes a fixed 50-cycle window. If you upload
+> fewer than 50 rows the API left-pads by repeating the first reading, so the
+> prediction is biased toward a healthier engine. Engine 1 of the FD001 test set
+> has only 31 observed cycles and returns 60 against a published RUL of 112 for
+> exactly this reason. Upload at least 50 cycles for a trustworthy number.
 
 ## Configuration
 

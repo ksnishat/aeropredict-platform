@@ -44,7 +44,7 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v --tb=short --maxfail=5 --disable-warnings \
+          python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=5 --disable-warnings \
             --cov=src --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=46
 
