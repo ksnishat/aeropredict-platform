@@ -56,7 +56,8 @@ def clean_dataset(bronze_path: Path, output_path: Path, dataset_id: str):
     nan_count = df.isnull().sum().sum()
     if nan_count > 0:
         logger.warning(f"{dataset_id}: {nan_count} NaN values found, filling...")
-        df = df.fillna(method="ffill").fillna(method="bfill")
+        # fillna(method=...) is deprecated and will be removed; use ffill/bfill.
+        df = df.ffill().bfill()
 
     # Validate cycle column
     invalid_cycles = (df["cycle"] <= 0).sum()
