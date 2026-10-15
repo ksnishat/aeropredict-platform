@@ -46,7 +46,7 @@ jobs:
         run: |
           python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=5 --disable-warnings \
             --cov=src --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=46
+            --cov-fail-under=52
 
       - name: Upload coverage to Codecov
         if: success()

@@ -292,16 +292,49 @@ python3 provision_dashboards.py aeropredict   # datasource + dashboard
 | `aeropredict_prediction_latency_seconds` | histogram | Inference latency |
 | `aeropredict_last_rul_value` | gauge | Most recent predicted RUL |
 | `aeropredict_model_loaded` | gauge | 1 when the trained model is used, 0 for the fallback |
+| `aeropredict_rag_available` | gauge | 1 when the ChromaDB index is ready, 0 when reports use the template |
+| `aeropredict_reports_total` | counter | Reports generated, labelled by `source` (`rag` / `template`) |
+| `aeropredict_feature_drift_psi` | gauge | PSI per sensor vs the training baseline |
+| `aeropredict_max_drift_psi` | gauge | Largest per-sensor PSI in the current window |
+
+### Drift detection
+
+`GET /drift` reports the Population Stability Index between live sensor readings
+and the distribution the model was trained on. The baseline is captured during
+training into `models/drift_baseline.json`.
+
+Two details matter for correctness:
+
+* The baseline is MinMax-scaled, so the API scales uploads with the same fitted
+  scaler before comparing. Comparing raw sensor values (hundreds) against a
+  scaled baseline (0-1) produced a spurious PSI of 13.8 for every feature.
+* A prediction is one engine's 50-cycle window, so the baseline stores one mean
+  per training window. Storing every row compared a narrow slice against the
+  full training mixture and inflated PSI.
+
+Six of the 21 FD001 sensors are constant, which collapses the quantile bins, so
+they are dropped from the baseline rather than reporting meaningless drift.
+
+Verified discrimination: a representative sample of windows gives mean PSI 0.19,
+all-healthy windows 2.83, all-degraded 8.33.
 
 ### Airflow pipeline
 
-`aeropredict_continuous_learning` retrains the LSTM, then generates a maintenance
-report (retrain → report), and logs training metrics to MLflow:
+`aeropredict_continuous_learning` retrains the LSTM, hot-swaps the served model,
+then generates a maintenance report (retrain → reload → report), logging training
+metrics to MLflow:
 
 ```bash
 airflow dags unpause aeropredict_continuous_learning
 airflow dags trigger aeropredict_continuous_learning
 ```
+
+The reload step calls `POST /admin/reload-model`, which is disabled unless
+`ENABLE_MODEL_RELOAD=true`. Without it the retrained checkpoint would sit on disk
+while the running process kept serving the weights it loaded at startup — which
+is exactly what happened before: the DAG wrote to the `airflow_models` volume
+while the API read `aeropredict_models`, so "continuous learning" retrained a
+model that was never served.
 
 ### Kubernetes (optional)
 
@@ -393,10 +426,19 @@ aeropredict-platform/
 `knowledge_base/turbofan_maintenance.txt` and retrieves the passages relevant to
 a specific RUL prediction before asking a local LLM to write the report.
 
-This replaced an earlier implementation that read the first five pages of a PDF
-and stuffed the raw text into the prompt. That was not retrieval: it sent the
-same fixed context for every prediction and could not cite which part of the
-reference supported a claim.
+The API loads this index at startup and uses it for the
+`maintenance_recommendation` field of every `/predict` response. If the index or
+the LLM is unavailable the API still returns a report, but it is the
+deterministic template rather than a generated one, and
+`aeropredict_reports_total{source="template"}` climbs so the degradation is
+visible rather than silent.
+
+This replaced two earlier implementations. The first read the first five pages
+of a PDF and stuffed the raw text into the prompt: that was not retrieval, it
+sent the same fixed context for every prediction and could not cite which part
+of the reference supported a claim. The second built the index but never wired
+it to the API, so `/predict` returned one of two hardcoded strings while the
+README described retrieval.
 
 ### How it works
 
