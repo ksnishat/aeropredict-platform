@@ -66,13 +66,15 @@ support a claim, say so instead of guessing.
 
 SITUATION:
 Engine #101 has a predicted Remaining Useful Life of {rul} cycles.
+The urgency band for this RUL is already determined: {band}.
 
 TASK:
-1. URGENCY - state the RUL band and urgency from the reference.
-2. DEGRADATION MODE - name the most likely mode and cite the specific sensor
+1. DEGRADATION MODE - name the most likely mode and cite the specific sensor
    channels from the reference that support it.
-3. ACTION - give the maintenance action the reference prescribes.
-4. UNCERTAINTY - state any limitation that applies.
+2. ACTION - give the maintenance action the reference prescribes for this band.
+3. UNCERTAINTY - state any limitation that applies.
+
+Do not restate or recompute the urgency band; it is given above.
 """
 
 
@@ -189,7 +191,7 @@ class MaintenanceRAG:
 
     def _build_chain(self) -> None:
         prompt = PromptTemplate(
-            template=PROMPT_TEMPLATE, input_variables=["context", "rul"]
+            template=PROMPT_TEMPLATE, input_variables=["context", "rul", "band"]
         )
         self.chain = prompt | self.llm | StrOutputParser()
 
@@ -212,15 +214,18 @@ class MaintenanceRAG:
         if self.chain is None or self.vector_db is None:
             raise RuntimeError("RAG chain not initialised; call ingest_knowledge()")
 
+        band = _urgency_band(rul_prediction)
         query = (
-            f"Engine predicted RUL is {rul_prediction:.0f} cycles. "
-            "What is the urgency band, the most likely degradation mode with "
-            "its supporting sensor channels, and the required maintenance action?"
+            f"Engine predicted RUL is {rul_prediction:.0f} cycles, urgency band "
+            f"{band}. What is the most likely degradation mode with its "
+            "supporting sensor channels, and the required maintenance action?"
         )
 
         passages = self.retrieve(query, k=4)
         context = "\n\n---\n\n".join(p["content"] for p in passages)
-        return self.chain.invoke({"context": context, "rul": f"{rul_prediction:.0f}"})
+        return self.chain.invoke(
+            {"context": context, "rul": f"{rul_prediction:.0f}", "band": band}
+        )
 
 
 def _fallback_report(rul_prediction: float) -> str:

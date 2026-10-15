@@ -72,6 +72,54 @@ class AsymmetricLoss(nn.Module):
         return weighted.mean()
 
 
+def _save_drift_baseline(X_train, path: str) -> None:
+    """Persist the per-window sensor means of the training set.
+
+    The comparison must be apples-to-apples. A single prediction is one engine's
+    50-cycle window, so comparing its raw rows against the full training mixture
+    (every engine, every cycle) reports a large PSI even for perfectly normal
+    input, because a narrow slice of a wide distribution never matches it.
+
+    Storing one mean per training window makes the baseline the distribution of
+    "what a window looks like", which is exactly what serving observes.
+
+    Sensors that are constant across the whole training set are dropped. In
+    FD001 six of the 21 channels never vary, so their quantile bins collapse and
+    PSI is undefined; keeping them would emit a meaningless "significant drift"
+    for a sensor that carries no information.
+    """
+    import json
+
+    from data_preprocessing import SENSOR_COLUMNS
+
+    # X_train is (samples, window, channels); average over the time axis so each
+    # window contributes one value per sensor.
+    arr = X_train.detach().cpu().numpy() if hasattr(X_train, "detach") else X_train
+    per_window = arr.mean(axis=1)
+
+    # Cap the sample count so the JSON stays small even on large datasets.
+    max_samples = 20000
+    if per_window.shape[0] > max_samples:
+        step = per_window.shape[0] // max_samples
+        per_window = per_window[::step][:max_samples]
+
+    features = {}
+    dropped = []
+    for i, name in enumerate(SENSOR_COLUMNS):
+        column = per_window[:, i]
+        if float(column.std()) < 1e-9:
+            dropped.append(name)
+            continue
+        features[name] = [round(float(v), 6) for v in column]
+
+    if dropped:
+        print(f"Dropped {len(dropped)} constant sensor(s) from the drift baseline: {', '.join(dropped)}")
+
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump({"features": features}, fh)
+
+
 def train(
     epochs: int = 50,
     batch_size: int = 32,
@@ -245,6 +293,16 @@ def train(
         torchscript_path = os.path.join(model_dir, "lstm_best.pt")
         scripted.save(torchscript_path)
         print(f"Exported TorchScript model to {torchscript_path} and scaler to {scaler_path}")
+
+        # 9. Capture the training-time feature distribution so serving can
+        # compute PSI drift. Without this the API has no baseline to compare
+        # production traffic against.
+        drift_path = os.path.join(model_dir, "drift_baseline.json")
+        try:
+            _save_drift_baseline(X_train, drift_path)
+            print(f"Drift baseline saved to {drift_path}")
+        except Exception as e:  # noqa: BLE001 - drift capture must not fail training
+            print(f"Drift baseline capture failed ({e}); drift metrics will be unavailable")
 
         # Artifact logging is best-effort. The tracking server may use an
         # artifact root this process cannot write to (for example a host path

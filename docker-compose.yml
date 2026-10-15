@@ -282,11 +282,20 @@ services:
     volumes:
       - ./src:/app/src
       - ./data:/app/data
-      - aeropredict_models:/app/models
+      # Same volume the Airflow DAG writes its retrained checkpoint to. Using a
+      # separate volume here meant "continuous learning" retrained a model that
+      # was never served: the DAG wrote to airflow_models while the API read
+      # aeropredict_models.
+      - airflow_models:/app/models
     environment:
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
+      - MODEL_PATH=/app/models/lstm_best.pt
+      - SCALER_PATH=/app/models/scaler.joblib
+      # Lets the retrain DAG hot-swap the served model over HTTP instead of
+      # requiring an API restart.
+      - ENABLE_MODEL_RELOAD=true
       - KNOWLEDGE_BASE_PATH=/opt/airflow/knowledge_base/turbofan_maintenance.txt
       - CHROMA_PERSIST_DIR=/opt/airflow/chroma
       - OLLAMA_HOST=http://host.docker.internal:11434
@@ -346,6 +355,5 @@ volumes:
   minio_data:
   grafana_data:
   prometheus_data:
-  aeropredict_models:
   airflow_logs:
   airflow_models:

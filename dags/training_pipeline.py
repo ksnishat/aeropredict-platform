@@ -49,6 +49,35 @@ def generate_report(**context):
     return {"status": "reported", "rul": rul, "report_chars": len(report or "")}
 
 
+def reload_serving_model(**context):
+    """Tell the serving API to pick up the freshly retrained checkpoint.
+
+    Best-effort by design: if the API is not running (for example when only the
+    DAG is being exercised) the task logs that and succeeds. The point of the
+    task is to make the retrain -> serve handoff visible in the DAG graph and to
+    fail loudly when the API *is* reachable but rejects the new weights.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    url = os.getenv("AEROPREDICT_API_RELOAD_URL", "http://host.docker.internal:8000/admin/reload-model")
+
+    try:
+        request = urllib.request.Request(url, method="POST", data=b"")
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode())
+        return {"status": "reloaded", "response": payload}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode()[:200]
+        if exc.code == 403:
+            # Reload is disabled by configuration, not broken.
+            return {"status": "skipped", "reason": f"reload disabled: {detail}"}
+        raise RuntimeError(f"API rejected the reload ({exc.code}): {detail}") from exc
+    except urllib.error.URLError as exc:
+        return {"status": "skipped", "reason": f"API unreachable: {exc.reason}"}
+
+
 # Default Arguments
 default_args = {
     "owner": "nishat",
@@ -71,12 +100,18 @@ with DAG(
         python_callable=retrain_model,
     )
 
-    # Task 2: Generate the maintenance report for a simulated low-RUL engine
+    # Task 2: Hot-swap the served model so the retrain actually takes effect
+    reload_task = PythonOperator(
+        task_id="reload_serving_model",
+        python_callable=reload_serving_model,
+    )
+
+    # Task 3: Generate the maintenance report for a simulated low-RUL engine
     report_task = PythonOperator(
         task_id="generate_maintenance_report",
         python_callable=generate_report,
         op_kwargs={"rul_prediction": 23},
     )
 
-    # The Flow: Train -> Then Report
-    train_task >> report_task
+    # The Flow: Train -> Reload -> Report
+    train_task >> reload_task >> report_task
