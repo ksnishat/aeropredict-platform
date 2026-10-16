@@ -45,53 +45,28 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 The system follows a microservices architecture orchestrated by Docker Compose and deployable to Kubernetes.
 
 ```mermaid
-graph TD
-    %% Data Sources
-    subgraph Data_Layer[Data Layer]
-        direction TB
-        Raw_Data[NASA C-MAPSS Dataset<br/>data/raw/*.txt] --> Processed_Data[Processed Features<br/>data/processed/*.npy]
-        Technical_Manuals[Maintenance Reference<br/>knowledge_base/*.txt] --> Vector_DB[ChromaDB<br/>Persisted Vector Index]
-    end
-    
-    %% Core Services
-    subgraph Core_Services[Core Services]
-        direction TB
-        Airflow[Apache Airflow<br/>Orchestration] --> Training[Model Training<br/>PyTorch + MLflow]
-        Airflow --> Ingestion[Data Ingestion<br/>Preprocessing]
-        Training --> Model_Registry[MLflow Model Registry<br/>Model Versioning]
-        Training --> API_Backend[FastAPI Backend<br/>Inference Service]
-        API_Backend --> RAG_Engine[RAG Engine<br/>ChromaDB + local LLM]
-        API_Backend --> Prometheus[Metrics Endpoint<br/>/metrics]
-    end
-    
-    %% Frontend & Monitoring
-    subgraph Frontend_Monitoring[Frontend & Monitoring]
-        direction TB
-        Streamlit[Streamlit Dashboard<br/>Technician UI] -->|API Calls| API_Backend
-        Grafana[Grafana Dashboard<br/>System Monitoring] -->|Scrapes| Prometheus
-        Prometheus -->|Scrapes| Airflow
-        Prometheus -->|Scrapes| API_Backend
-    end
-    
-    %% Deployment
-    subgraph Deployment[Deployment Options]
-        direction TB
-        Docker_Compose[Docker Compose<br/>Local Development] -->|Deploy to| Kubernetes[Kubernetes Cluster]
-        Kubernetes --> Helm[Helm Chart<br/>aeropredict-platform]
-        Kubernetes --> Ingress[Nginx Ingress<br/>TLS Termination]
-        Ingress --> API_Service[API Service<br/>ClusterIP]
-        Ingress --> Streamlit_Service[Streamlit Service<br/>ClusterIP]
-    end
-    
-    %% Styling
-    classDef data fill:#f9f,stroke:#333,stroke-width:1px;
-    classDef service fill:#bbf,stroke:#333,stroke-width:1px;
-    classDef frontend fill:#bfb,stroke:#333,stroke-width:1px;
-    classDef deploy fill:#fbb,stroke:#333,stroke-width:1px;
-    class Raw_Data,Processed_Data,Technical_Manuals,Vector_DB data;
-    class Airflow,Ingestion,Training,Model_Registry,API_Backend,RAG_Engine,Prometheus service;
-    class Streamlit,Grafana frontend;
-    class Docker_Compose,Kubernetes,Helm,Ingress,API_Service,Streamlit_Service deploy;
+flowchart LR
+    CMAPSS["NASA C-MAPSS<br/>sensor trajectories"] --> DAG["Airflow DAG<br/>weekly retrain"]
+    DAG --> LSTM["LSTM<br/>PyTorch"]
+    LSTM --> MLflow["MLflow<br/>runs + metrics"]
+    MLflow --> MinIO["MinIO<br/>artifacts"]
+    MLflow --> API["FastAPI<br/>/predict"]
+    KB["Maintenance reference<br/>knowledge_base/*.txt"] --> RAG["RAG engine<br/>ChromaDB + LLM"]
+    API --> RAG
+    API --> Prom["Prometheus"]
+    Prom --> Graf["Grafana"]
+
+    classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:1px,color:#0d47a1
+    classDef train fill:#fff3e0,stroke:#e65100,stroke-width:1px,color:#bf360c
+    classDef track fill:#f3e5f5,stroke:#6a1b9a,stroke-width:1px,color:#4a148c
+    classDef serve fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px,color:#1b5e20
+    classDef observe fill:#eceff1,stroke:#37474f,stroke-width:1px,color:#263238
+
+    class CMAPSS,KB data
+    class DAG,LSTM train
+    class MLflow,MinIO track
+    class API,RAG serve
+    class Prom,Graf observe
 ```
 
 ## Professional Feature Table
