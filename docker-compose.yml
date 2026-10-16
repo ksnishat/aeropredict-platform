@@ -185,6 +185,10 @@ services:
       - MINIO_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
+      # The retraining DAG calls /admin/reload-model and /monitoring, both of
+      # which enforce X-API-Key. Without this the DAG got a 401 and failed.
+      # Must match the API_KEY the serving API was started with.
+      - API_KEY=${API_KEY:-demo-secret-key}
     volumes:
       - ./dags:/opt/airflow/dags
       # Mount src OUTSIDE the dags directory. Airflow scans everything under

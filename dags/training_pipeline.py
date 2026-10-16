@@ -65,6 +65,12 @@ def reload_serving_model(**context):
 
     try:
         request = urllib.request.Request(url, method="POST", data=b"")
+        # The serving API enforces X-API-Key on /admin/reload-model. Without
+        # this header the call returns 401, which is not in the skip list
+        # below, so the task raised and the whole DAG failed.
+        api_key = os.getenv("API_KEY")
+        if api_key:
+            request.add_header("X-API-Key", api_key)
         with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode())
         return {"status": "reloaded", "response": payload}
