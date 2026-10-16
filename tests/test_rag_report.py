@@ -7,6 +7,8 @@ reported honestly, and a failure in retrieval or the LLM degrades to the
 template instead of raising.
 """
 
+import asyncio
+
 import pytest
 
 from src import api
@@ -18,6 +20,16 @@ def _reset_rag_agent():
     original = api.rag_agent
     yield
     api.rag_agent = original
+
+
+def _report(rul):
+    """Run the async report generator to completion.
+
+    ``get_genai_report`` is async because the LLM call is offloaded to a worker
+    thread — calling it directly from the async handler blocked the event loop
+    and serialised every request behind the slowest one.
+    """
+    return asyncio.run(api.get_genai_report(rul))
 
 
 class _StubAgent:
@@ -35,14 +47,14 @@ class _StubAgent:
 
 def test_report_uses_rag_when_agent_is_available():
     api.rag_agent = _StubAgent(report="RAG-GENERATED")
-    report, source = api.get_genai_report(23)
+    report, source = _report(23)
     assert report == "RAG-GENERATED"
     assert source == "rag"
 
 
 def test_report_falls_back_to_template_when_agent_is_missing():
     api.rag_agent = None
-    report, source = api.get_genai_report(23)
+    report, source = _report(23)
     assert source == "template"
     assert report
 
@@ -50,7 +62,7 @@ def test_report_falls_back_to_template_when_agent_is_missing():
 def test_report_falls_back_when_llm_raises():
     """An unreachable Ollama must not turn a prediction into a 500."""
     api.rag_agent = _StubAgent(raises=RuntimeError("ollama unreachable"))
-    report, source = api.get_genai_report(23)
+    report, source = _report(23)
     assert source == "template"
     assert report
 
@@ -58,8 +70,8 @@ def test_report_falls_back_when_llm_raises():
 def test_template_report_is_risk_aware():
     """The fallback must still distinguish urgent from nominal."""
     api.rag_agent = None
-    critical, _ = api.get_genai_report(10)
-    nominal, _ = api.get_genai_report(200)
+    critical, _ = _report(10)
+    nominal, _ = _report(200)
     assert critical != nominal
     assert "Urgency" in critical
 

@@ -6,6 +6,7 @@ Endpoints:
 - POST /predict : Upload sensor data, get RUL prediction + maintenance report
 """
 
+import asyncio
 import io
 import os
 import sys
@@ -244,17 +245,8 @@ def calculate_risk_level(rul: int) -> str:
     return "LOW"
 
 
-def get_genai_report(rul: int) -> tuple[str, str]:
-    """Generate a maintenance report for a predicted RUL.
-
-    Uses the ChromaDB retrieval index over the turbofan maintenance reference
-    and a local LLM. Returns ``(report, source)`` where source is ``"rag"`` or
-    ``"template"``.
-
-    Never raises: if the index or the LLM is unavailable the caller still gets
-    a usable report, and the ``source`` label makes the degradation visible in
-    Prometheus rather than silent.
-    """
+def _generate_report_blocking(rul: int) -> tuple[str, str]:
+    """Synchronous report generation. See ``get_genai_report`` for the async wrapper."""
     global rag_agent
 
     if rag_agent is not None:
@@ -264,6 +256,25 @@ def get_genai_report(rul: int) -> tuple[str, str]:
             print(f"RAG report generation failed ({exc}); using template fallback")
 
     return _template_report(rul), "template"
+
+
+async def get_genai_report(rul: int) -> tuple[str, str]:
+    """Generate a maintenance report for a predicted RUL.
+
+    Uses the ChromaDB retrieval index over the turbofan maintenance reference
+    and a local LLM. Returns ``(report, source)`` where source is ``"rag"`` or
+    ``"template"``.
+
+    Never raises: if the index or the LLM is unavailable the caller still gets
+    a usable report, and the ``source`` label makes the degradation visible in
+    Prometheus rather than silent.
+
+    The LLM call is synchronous and takes seconds, so it runs in a worker thread.
+    Calling it directly from the async handler blocked the event loop: a load
+    test at concurrency 6 measured p50 12.2s, because every request queued behind
+    the one holding the loop. Offloading it lets requests overlap.
+    """
+    return await asyncio.to_thread(_generate_report_blocking, rul)
 
 
 def _template_report(rul: int) -> str:
@@ -343,7 +354,7 @@ async def predict_rul(file: UploadFile = File(...)):
         risk = calculate_risk_level(predicted_rul)
 
         # 4. GENAI REPORT (ChromaDB retrieval + local LLM, template fallback)
-        report, report_source = get_genai_report(predicted_rul)
+        report, report_source = await get_genai_report(predicted_rul)
 
         # 5. DRIFT: record the observed sensor values against the training
         # baseline. Done before metrics so the gauges reflect this request.
