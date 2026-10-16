@@ -1,9 +1,10 @@
 groups:
   - name: AeroPredict Alerts
     rules:
-      # High error rate
+      # High error rate. The metric name must match what the API actually
+      # exposes; a wrong name makes the rule silently never fire.
       - alert: HighErrorRate
-        expr: rate(aeropredict_requests_total{status="error"}[5m]) > 0.05
+        expr: rate(aeropredict_predictions_total{status="error"}[5m]) > 0.05
         for: 5m
         labels:
           severity: warning
@@ -13,7 +14,7 @@ groups:
 
       # High latency
       - alert: HighLatency
-        expr: histogram_quantile(0.95, rate(aeropredict_request_duration_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.95, rate(aeropredict_prediction_latency_seconds_bucket[5m])) > 1
         for: 5m
         labels:
           severity: warning
@@ -29,7 +30,7 @@ groups:
           severity: critical
         annotations:
           summary: "AeroPredict model not loaded"
-          description: "The model is not loaded, predictions will fail"
+          description: "The model is not loaded, predictions will fall back or fail"
 
       # Airflow DAG failure
       - alert: AirflowDAGFailure
@@ -42,3 +43,15 @@ groups:
         annotations:
           summary: "Airflow DAG run failed"
           description: "Dag {{ $labels.dag_id }} failed with {{ $labels.task_id }}"
+
+      # Feature drift. PSI is computed against the training baseline; 0.25 is
+      # the conventional "significant shift" threshold. Without this rule the
+      # drift gauge is measured but nothing acts on it.
+      - alert: FeatureDriftDetected
+        expr: aeropredict_max_drift_psi > 0.25
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AeroPredict input distribution has shifted"
+          description: "PSI is {{ $value }} (threshold 0.25). The model is seeing data unlike its training set."
