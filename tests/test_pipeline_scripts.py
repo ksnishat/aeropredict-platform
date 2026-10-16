@@ -175,3 +175,68 @@ class _no_warnings:
 
     def __exit__(self, *exc):
         return self._ctx.__exit__(*exc)
+
+
+class TestTrainingCli:
+    """The training script must be runnable without arguments.
+
+    train() previously defaulted data_path to the container mount
+    (/opt/airflow/data/train_FD001.txt) and __main__ called train() with no
+    arguments, so `python src/train_model.py` failed with FileNotFoundError on
+    any host checkout. There were no flags to override it either.
+    """
+
+    def test_default_data_path_resolves_on_a_host_checkout(self):
+        from src.train_model import _default_data_path
+
+        path = _default_data_path()
+        assert os.path.exists(path), f"resolved to a missing path: {path}"
+        assert path.endswith("train_FD001.txt")
+
+    def test_default_data_path_prefers_the_env_override(self, tmp_path, monkeypatch):
+        from src.train_model import _default_data_path
+
+        fake = tmp_path / "train_FD001.txt"
+        fake.write_text("1 1 1\n")
+        monkeypatch.setenv("AEROPREDICT_DATA", str(fake))
+        assert _default_data_path() == str(fake)
+
+    def test_cli_exposes_every_train_parameter(self):
+        """A parameter with no flag can only be changed by editing the source."""
+        import inspect
+        import subprocess
+        import sys
+
+        from src.train_model import train
+
+        result = subprocess.run(
+            [sys.executable, "src/train_model.py", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        assert result.returncode == 0, result.stderr
+        help_text = result.stdout
+
+        params = set(inspect.signature(train).parameters)
+        # argparse renders underscores as dashes
+        expected = {p.replace("_", "-") for p in params}
+        missing = {p for p in expected if f"--{p}" not in help_text}
+        assert not missing, f"train() parameters with no CLI flag: {sorted(missing)}"
+
+    def test_train_resolves_the_path_instead_of_hardcoding_it(self):
+        """The default must be None so resolution happens at call time.
+
+        A hardcoded default of "/opt/airflow/data/train_FD001.txt" is what made
+        the script fail on a host checkout, even though _default_data_path()
+        existed and worked.
+        """
+        import inspect
+
+        from src.train_model import train
+
+        default = inspect.signature(train).parameters["data_path"].default
+        assert default is None, (
+            f"data_path defaults to {default!r}; it must be None so "
+            "_default_data_path() is consulted"
+        )

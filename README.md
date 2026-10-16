@@ -223,6 +223,28 @@ PYTHONPATH=src python src/train_model.py
 ```
 
 Runs are logged to MLflow under the `Airflow_Automated_Training` experiment.
+The dataset path is resolved automatically (container mount, then the in-repo
+`CMAPSSData/`), so no arguments are needed on a host checkout.
+
+Every training parameter has a flag:
+
+```bash
+PYTHONPATH=src python src/train_model.py --help
+PYTHONPATH=src python src/train_model.py --epochs 30 --rul-cap 125 --model-dir models
+```
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--epochs` | 50 | Maximum training epochs |
+| `--batch-size` | 32 | Training batch size |
+| `--learning-rate` | 0.001 | Adam learning rate |
+| `--hidden-size` | 50 | LSTM hidden state dimension |
+| `--num-layers` | 2 | Number of LSTM layers |
+| `--patience` | 10 | Early-stopping patience |
+| `--val-split` | 0.2 | Validation fraction |
+| `--data-path` | auto | C-MAPSS training file |
+| `--rul-cap` | 125 | Piecewise-linear RUL ceiling |
+| `--model-dir` | `models` | Export directory for the checkpoint, scaler and drift baseline |
 
 ### 4. Export the TorchScript checkpoint for the API
 

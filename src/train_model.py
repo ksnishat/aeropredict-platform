@@ -120,6 +120,30 @@ def _save_drift_baseline(X_train, path: str) -> None:
         json.dump({"features": features}, fh)
 
 
+def _default_data_path() -> str:
+    """Locate the C-MAPSS training file.
+
+    Prefers the container mount, then falls back to the in-repo dataset so
+    ``python src/train_model.py`` works on a host checkout without arguments.
+    """
+    candidates = [
+        os.getenv("AEROPREDICT_DATA", ""),
+        "/opt/airflow/data/train_FD001.txt",
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main",
+            "CMAPSSData",
+            "train_FD001.txt",
+        ),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    # Nothing found: return the container path so the error message names the
+    # location the DAG would have used.
+    return "/opt/airflow/data/train_FD001.txt"
+
+
 def train(
     epochs: int = 50,
     batch_size: int = 32,
@@ -128,7 +152,7 @@ def train(
     num_layers: int = 2,
     patience: int = 10,
     val_split: float = 0.2,
-    data_path: str = "/opt/airflow/data/train_FD001.txt",
+    data_path: str | None = None,
     rul_cap: int = 125,
     model_dir: str = "models",
 ):
@@ -142,10 +166,13 @@ def train(
         num_layers: Number of LSTM layers
         patience: Early stopping patience (epochs without improvement)
         val_split: Fraction of data for validation
-        data_path: Path to the C-MAPSS training data file
+        data_path: Path to the C-MAPSS training data file. Defaults to the
+            container path, then falls back to the in-repo dataset so the script
+            also runs on a host checkout.
         rul_cap: Piecewise-linear RUL ceiling (see load_and_clean_data)
         model_dir: Directory for the exported TorchScript model and scaler
     """
+    data_path = data_path or _default_data_path()
     # 1. Config MLOps (overridable for local runs outside docker-compose)
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     os.environ.setdefault("MLFLOW_S3_ENDPOINT_URL", os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000"))
@@ -318,4 +345,43 @@ def train(
 
 
 if __name__ == "__main__":
-    train()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Train the AeroPredict LSTM on NASA C-MAPSS data."
+    )
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--learning-rate", type=float, default=0.001)
+    parser.add_argument("--hidden-size", type=int, default=50)
+    parser.add_argument("--num-layers", type=int, default=2)
+    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--val-split", type=float, default=0.2)
+    parser.add_argument(
+        "--data-path",
+        default=None,
+        help="C-MAPSS training file. Defaults to the container mount, then the "
+        "in-repo dataset.",
+    )
+    parser.add_argument(
+        "--rul-cap",
+        type=int,
+        default=125,
+        help="Piecewise-linear RUL ceiling. Uncapped targets make the model "
+        "predict the mean.",
+    )
+    parser.add_argument("--model-dir", default="models")
+    args = parser.parse_args()
+
+    train(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        hidden_size=args.hidden_size,
+        num_layers=args.num_layers,
+        patience=args.patience,
+        val_split=args.val_split,
+        data_path=args.data_path,
+        rul_cap=args.rul_cap,
+        model_dir=args.model_dir,
+    )
