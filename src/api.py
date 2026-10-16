@@ -15,12 +15,14 @@ from contextlib import asynccontextmanager
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 # Allow `python src/api.py` as well as `uvicorn src.api:app`.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from auth import auth_enabled, require_api_key
 from data_preprocessing import preprocess_for_inference
+from uploads import enforce_content_length, read_upload
 
 # Prometheus instrumentation
 try:
@@ -314,10 +316,12 @@ def health_check():
         "rag_available": rag_agent is not None,
         "rag_model": rag_model_name,
         "rag_model_warning": rag_model_warning,
+        "auth_enabled": auth_enabled(),
     }
 
 
-@app.post("/predict", response_model=PredictionResponse)
+@app.post("/predict", response_model=PredictionResponse,
+          dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
 async def predict_rul(file: UploadFile = File(...)):
     """
     Predict RUL from uploaded sensor data CSV.
@@ -327,7 +331,7 @@ async def predict_rul(file: UploadFile = File(...)):
     """
     try:
         # 1. READ DATA
-        contents = await file.read()
+        contents = await read_upload(file)
         df = pd.read_csv(io.BytesIO(contents), sep=r"\s+", header=None)
 
         # 2. PREPROCESS & PREDICT
@@ -425,7 +429,7 @@ def publish_drift_metrics(drift: dict) -> None:
     DRIFT_MAX_PSI_GAUGE.set(max(s["psi"] for s in drift["features"].values()))
 
 
-@app.get("/drift")
+@app.get("/drift", dependencies=[Depends(require_api_key)])
 def drift_report():
     """Per-feature PSI against the training baseline.
 
@@ -472,7 +476,7 @@ def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.post("/admin/reload-model")
+@app.post("/admin/reload-model", dependencies=[Depends(require_api_key)])
 def reload_model():
     """Re-read the model checkpoint from disk without restarting the API.
 

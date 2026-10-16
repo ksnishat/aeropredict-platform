@@ -49,6 +49,45 @@ wait_health() {
   return 1
 }
 
+# ------------------------------------------------------------- watchdog
+# The API and MLflow run on the host under `nohup ... &`, which means nothing
+# restarts them if they crash. A crashed API is worse than a stopped one: the
+# port is closed, Prometheus marks the target down, and the failure is only
+# visible if someone looks. This watchdog polls both and restarts them.
+#
+# It is a background loop, not a service manager. For a real deployment the
+# API would be a container with `restart: unless-stopped` (as the Airflow and
+# monitoring services already are) or a systemd unit.
+start_watchdog() {
+  local pidfile="$LOG_DIR/watchdog.pid"
+  if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+    ok "watchdog already running (pid $(cat "$pidfile"))"
+    return 0
+  fi
+
+  (
+    while true; do
+      sleep 30
+      if ! curl -sf -o /dev/null --max-time 5 "http://localhost:$API_PORT/" 2>/dev/null; then
+        printf '[%s] API on :%s is down, restarting\n' "$(date +%H:%M:%S)" "$API_PORT" >> "$LOG_DIR/watchdog.log"
+        ( cd "$DIR" && env $MODEL_ENV nohup conda run -n "$ENV_NAME" --cwd "$DIR" \
+            python "$LOG_DIR/run_api.py" >> "$LOG_DIR/api.log" 2>&1 & )
+      fi
+      if ! curl -sf -o /dev/null --max-time 5 -H "Host: localhost" "http://localhost:$MLFLOW_PORT/" 2>/dev/null; then
+        printf '[%s] MLflow on :%s is down, restarting\n' "$(date +%H:%M:%S)" "$MLFLOW_PORT" >> "$LOG_DIR/watchdog.log"
+        ( cd "$DIR" && nohup conda run -n "$ENV_NAME" --cwd "$DIR" mlflow server \
+            --host 0.0.0.0 --port "$MLFLOW_PORT" \
+            --backend-store-uri "sqlite:///$DIR/mlflow.db" \
+            --default-artifact-root "$DIR/mlruns" \
+            --allowed-hosts "localhost,localhost:$MLFLOW_PORT,127.0.0.1,127.0.0.1:$MLFLOW_PORT,host.docker.internal,host.docker.internal:$MLFLOW_PORT,mlflow,mlflow:$MLFLOW_PORT" \
+            >> "$LOG_DIR/mlflow.log" 2>&1 & )
+      fi
+    done
+  ) >/dev/null 2>&1 &
+  echo $! > "$pidfile"
+  ok "watchdog started (pid $(cat "$pidfile"))"
+}
+
 # ---------------------------------------------------------------- API
 if curl -sf -o /dev/null --max-time 2 "http://localhost:$API_PORT/" 2>/dev/null; then
   ok "API already up on $API_PORT"
@@ -168,6 +207,8 @@ if docker run -d --name "graf_$PROJECT" -p "${GRAFANA_PORT}:3000" \
 else
   bad "Grafana failed to start"
 fi
+
+start_watchdog
 
 printf '\n\033[1m═══ %s live ═══\033[0m\n' "$PROJECT"
 printf '  API        http://localhost:%s/docs\n' "$API_PORT"
