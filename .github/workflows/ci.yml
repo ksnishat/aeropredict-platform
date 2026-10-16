@@ -65,3 +65,17 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+
+  # ---------------------------------------------------------------- docs
+  docs:
+    name: Documentation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check for stale metrics and overclaims
+        run: python .github/scripts/check_docs.py

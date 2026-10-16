@@ -17,6 +17,8 @@ env/
 # --- Environment Variables ---
 .env
 .env.*
+# .env.example is a template with no secrets, so it is committed.
+!.env.example
 !.env.template
 
 # --- IDE ---
