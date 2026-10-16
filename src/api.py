@@ -53,6 +53,11 @@ try:
         "Maintenance reports generated, by source",
         ["source"],
     )
+    RAG_MODEL_MISMATCH = Gauge(
+        "aeropredict_rag_model_mismatch",
+        "1 when the configured OLLAMA_MODEL was not pulled and a substitute was "
+        "used, 0 when the configured tag was found",
+    )
     DRIFT_PSI_GAUGE = Gauge(
         "aeropredict_feature_drift_psi",
         "Population Stability Index per sensor vs the training baseline",
@@ -65,6 +70,7 @@ try:
 except ImportError:  # pragma: no cover - prometheus_client optional at import time
     PREDICTION_COUNT = PREDICTION_LATENCY = PREDICTED_RUL = None
     MODEL_LOADED_GAUGE = RAG_AVAILABLE_GAUGE = RAG_REPORT_COUNT = None
+    RAG_MODEL_MISMATCH = None
     DRIFT_PSI_GAUGE = DRIFT_MAX_PSI_GAUGE = None
 
 # Try to import MLflow model loading
@@ -87,6 +93,8 @@ model = None
 model_loaded = False
 scaler = None
 rag_agent = None
+rag_model_name = None
+rag_model_warning = None
 drift_monitor = None
 
 
@@ -146,7 +154,7 @@ def load_rag():
     embedding model is unavailable, so a failure here only downgrades reports
     to the template.
     """
-    global rag_agent
+    global rag_agent, rag_model_name, rag_model_warning
 
     try:
         from rag_inference import MaintenanceRAG
@@ -154,11 +162,15 @@ def load_rag():
         agent = MaintenanceRAG()
         count = agent.ingest_knowledge()
         rag_agent = agent
-        print(f"RAG index ready ({count} chunks)")
+        rag_model_name = agent.llm_model_name
+        rag_model_warning = agent.model_warning
+        print(f"RAG index ready ({count} chunks), LLM={rag_model_name}")
         return True
     except Exception as e:  # noqa: BLE001 - reports degrade to the template
         print(f"RAG unavailable ({e}); maintenance reports will use the template")
         rag_agent = None
+        rag_model_name = None
+        rag_model_warning = None
         return False
 
 
@@ -272,6 +284,7 @@ async def lifespan(app: FastAPI):
         MODEL_LOADED_GAUGE.set(1 if model_loaded else 0)
     if RAG_AVAILABLE_GAUGE is not None:
         RAG_AVAILABLE_GAUGE.set(1 if rag_agent is not None else 0)
+        RAG_MODEL_MISMATCH.set(1 if rag_model_warning else 0)
     yield
 
 
@@ -299,6 +312,8 @@ def health_check():
         "service": "aeropredict-api",
         "model_loaded": model_loaded,
         "rag_available": rag_agent is not None,
+        "rag_model": rag_model_name,
+        "rag_model_warning": rag_model_warning,
     }
 
 
@@ -337,6 +352,7 @@ async def predict_rul(file: UploadFile = File(...)):
             PREDICTED_RUL.set(predicted_rul)
             MODEL_LOADED_GAUGE.set(1 if model_loaded else 0)
             RAG_AVAILABLE_GAUGE.set(1 if rag_agent is not None else 0)
+            RAG_MODEL_MISMATCH.set(1 if rag_model_warning else 0)
             RAG_REPORT_COUNT.labels(source=report_source).inc()
             publish_drift_metrics(drift)
 
@@ -449,6 +465,8 @@ def metrics():
 
     PREDICTION_COUNT.labels(risk_level="ANY").inc(0)  # ensure series registered
     RAG_REPORT_COUNT.labels(source="template").inc(0)
+    if RAG_MODEL_MISMATCH is not None:
+        RAG_MODEL_MISMATCH.set(1 if rag_model_warning else 0)
     if DRIFT_MAX_PSI_GAUGE is not None:
         DRIFT_MAX_PSI_GAUGE.set(0.0)  # ensure the series exists before traffic
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

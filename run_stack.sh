@@ -30,10 +30,11 @@ GRAFANA_PORT=3001
 PROJECT="aeropredict"
 ENV_NAME="aeropredict-env"
 API_IMPORT="from api import app"
-# OLLAMA_MODEL must name a tag that is actually pulled. The code default is
-# "llama3.2", which may not be present, in which case every report silently
-# degrades to the template while /health still reports rag_available: true.
-MODEL_ENV="MODEL_PATH=models/lstm_best.pt DRIFT_BASELINE_PATH=models/drift_baseline.json ENABLE_MODEL_RELOAD=true OLLAMA_MODEL=llama3.2:1b"
+# OLLAMA_MODEL is left unset on purpose: the RAG module resolves it against
+# the tags Ollama actually has pulled and warns when the configured tag is
+# missing. Hardcoding a tag here would mask that warning on a machine with
+# a different model set.
+MODEL_ENV="MODEL_PATH=models/lstm_best.pt DRIFT_BASELINE_PATH=models/drift_baseline.json ENABLE_MODEL_RELOAD=true"
 
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 ok()   { printf '  \033[0;32m\u2713\033[0m %s\n' "$*"; }

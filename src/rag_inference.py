@@ -91,6 +91,68 @@ def _urgency_band(rul: float) -> str:
     return "Critical (High urgency)"
 
 
+def _list_ollama_models(base_url: str, timeout: float = 5.0) -> list[str]:
+    """Return the model tags the Ollama server has pulled.
+
+    Returns an empty list when the server is unreachable, so callers can treat
+    "cannot tell" the same as "nothing available" without special-casing.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/api/tags", timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode())
+        return [m["name"] for m in payload.get("models", []) if m.get("name")]
+    except (urllib.error.URLError, OSError, ValueError, KeyError):
+        return []
+
+
+def resolve_llm_model(
+    requested: str | None, base_url: str, available: list[str] | None = None
+) -> tuple[str, str | None]:
+    """Pick an Ollama model tag that actually exists.
+
+    A configured tag that is not pulled is the worst case: the API starts, the
+    retrieval index loads, ``/health`` reports ``rag_available: true``, and every
+    report silently degrades to the template. This resolves to a real tag and
+    reports what it did.
+
+    Args:
+        requested: The configured tag, or None to use the default.
+        base_url: Ollama base URL.
+        available: Pre-fetched tag list, to avoid a second HTTP call.
+
+    Returns:
+        ``(model_name, warning)``. ``warning`` is None when the requested tag was
+        used as-is.
+    """
+    tags = available if available is not None else _list_ollama_models(base_url)
+    wanted = requested or DEFAULT_LLM_MODEL
+
+    if not tags:
+        # Server unreachable: keep the requested tag so the error surfaces from
+        # the LLM call rather than being masked by a substitution.
+        return wanted, None
+
+    if wanted in tags:
+        return wanted, None
+
+    # Prefer a same-family tag (llama3.2 -> llama3.2:1b) before falling back to
+    # an arbitrary model, so a quantised variant of the intended model wins over
+    # an unrelated one.
+    family = wanted.split(":")[0]
+    same_family = [t for t in tags if t.split(":")[0] == family]
+    chosen = same_family[0] if same_family else tags[0]
+
+    warning = (
+        f"OLLAMA_MODEL={wanted!r} is not pulled (available: {', '.join(tags)}). "
+        f"Using {chosen!r} instead. Set OLLAMA_MODEL to silence this."
+    )
+    return chosen, warning
+
+
 class MaintenanceRAG:
     """Retrieval-augmented maintenance report generator."""
 
@@ -115,10 +177,17 @@ class MaintenanceRAG:
         self.embedding_model_name = embedding_model or os.getenv(
             "EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
         )
-        self.llm_model_name = llm_model or os.getenv("OLLAMA_MODEL", DEFAULT_LLM_MODEL)
         self.ollama_base_url = ollama_base_url or os.getenv(
             "OLLAMA_HOST", "http://localhost:11434"
         )
+
+        # Resolve against what is actually pulled, so a missing tag degrades
+        # loudly instead of silently returning template reports.
+        self.llm_model_name, self.model_warning = resolve_llm_model(
+            llm_model or os.getenv("OLLAMA_MODEL"), self.ollama_base_url
+        )
+        if self.model_warning:
+            print(f"WARNING: {self.model_warning}")
 
         self.embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model_name)
         self.llm = Ollama(model=self.llm_model_name, base_url=self.ollama_base_url)
