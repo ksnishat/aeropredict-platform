@@ -30,7 +30,10 @@ GRAFANA_PORT=3001
 PROJECT="aeropredict"
 ENV_NAME="aeropredict-env"
 API_IMPORT="from api import app"
-MODEL_ENV="MODEL_PATH=models/lstm_best.pt"
+# OLLAMA_MODEL must name a tag that is actually pulled. The code default is
+# "llama3.2", which may not be present, in which case every report silently
+# degrades to the template while /health still reports rag_available: true.
+MODEL_ENV="MODEL_PATH=models/lstm_best.pt DRIFT_BASELINE_PATH=models/drift_baseline.json ENABLE_MODEL_RELOAD=true OLLAMA_MODEL=llama3.2:1b"
 
 log()  { printf '\033[1;34m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 ok()   { printf '  \033[0;32m\u2713\033[0m %s\n' "$*"; }
