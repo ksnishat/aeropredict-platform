@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXTRACT = REPO_ROOT / "src" / "scripts" / "extract_bronze.py"
@@ -187,11 +188,34 @@ class TestTrainingCli:
     """
 
     def test_default_data_path_resolves_on_a_host_checkout(self):
+        """Resolution must find the in-repo dataset when it is present.
+
+        Skipped in CI, which has no dataset: the point of this test is that the
+        fallback works on a checkout, not that the data is always available.
+        """
         from src.train_model import _default_data_path
 
         path = _default_data_path()
-        assert os.path.exists(path), f"resolved to a missing path: {path}"
         assert path.endswith("train_FD001.txt")
+        if not os.path.exists(path):
+            pytest.skip(f"dataset not present at {path} (expected in CI)")
+
+    def test_default_data_path_falls_back_to_the_repo_dataset(self, monkeypatch):
+        """With no env override and no container mount, the repo copy is used."""
+        from src import train_model
+
+        monkeypatch.delenv("AEROPREDICT_DATA", raising=False)
+
+        # Only the repo candidate "exists"; the container mount does not. The
+        # real filesystem is not consulted, so this holds in CI too.
+        monkeypatch.setattr(
+            train_model.os.path,
+            "exists",
+            lambda p: "CMAPSSData" in str(p),
+        )
+
+        path = train_model._default_data_path()
+        assert "CMAPSSData" in path, f"did not fall back to the repo dataset: {path}"
 
     def test_default_data_path_prefers_the_env_override(self, tmp_path, monkeypatch):
         from src.train_model import _default_data_path
