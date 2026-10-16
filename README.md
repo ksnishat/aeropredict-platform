@@ -164,6 +164,52 @@ tracked step is replacing the LSTM with a temporal-convolution or small
 Transformer encoder. This is documented rather than hidden so the metrics above
 are not overstated.
 
+## Security
+
+| Control | Implementation |
+|---------|---------------|
+| API-key auth | `src/auth.py` — `X-API-Key` on `/predict`, `/drift`, `/admin/reload-model`. Off when `API_KEY` is unset. |
+| Constant-time comparison | `secrets.compare_digest`, so response timing does not leak the key length or prefix. |
+| TLS | `infrastructure/tls/` — nginx reverse proxy, TLSv1.2/1.3, `server_tokens off`, security headers. |
+| Upload limit | `src/uploads.py` — `Content-Length` rejected before the body is read; the bytes actually received are checked too. |
+| Health stays open | `/` and `/metrics` are unauthenticated so a load balancer and Prometheus can reach them. They expose no data. |
+
+### Enabling auth
+
+```bash
+export API_KEY="$(openssl rand -hex 32)"
+./run_stack.sh
+```
+
+`run_stack.sh` defaults `API_KEY` to a demo value so the stack is secure by
+default. The key is part of the environment the watchdog restarts the API with,
+so it survives a crash — a key set only on the start command would be silently
+dropped.
+
+### Calling an authenticated endpoint
+
+```bash
+curl -H "X-API-Key: $API_KEY" -F "file=@sample.csv" http://localhost:8000/predict
+```
+
+### Over HTTPS
+
+```bash
+./infrastructure/tls/start_tls_proxy.sh
+curl -k -H "X-API-Key: $API_KEY" -F "file=@sample.csv" https://localhost:8443/predict
+```
+
+The certificate is self-signed, so `-k` is required with curl and a browser will
+warn. A real deployment would use a CA-issued certificate and terminate TLS at
+the load balancer.
+
+### Not in place
+
+No RBAC or per-user identity, no rate limiting, no secret manager (credentials
+are environment variables), and no audit log of who called `/admin/reload-model`.
+
+---
+
 ## Production readiness
 
 This is a **production-shaped** system, not a production-hardened one. The

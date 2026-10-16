@@ -1,4 +1,4 @@
-.PHONY: help install dev-install test lint format clean dvc-run dvc-repro dvc-push dvc-pull docker-build docker-up docker-down k8s-deploy k8s-undeploy airflow-test
+.PHONY: help install dev-install test lint format clean dvc-run dvc-repro dvc-push dvc-pull docker-build docker-up docker-down k8s-deploy k8s-undeploy airflow-test stack stack-stop tls load-test
 
 ## Show this help message
 help:
@@ -75,3 +75,21 @@ k8s-undeploy:
 ## Test Airflow DAG import
 airflow-test:
 	python -c "from dags.training_pipeline import dag; print('DAG OK:', dag.dag_id)"
+
+## Start the live stack (API, MLflow, MinIO, Prometheus, Grafana)
+stack:
+	./run_stack.sh
+
+## Stop the live stack and its containers
+stack-stop:
+	@-pkill -f "run_api.py" 2>/dev/null || true
+	@-docker rm -f prom_aeropredict graf_aeropredict aeropredict_minio 2>/dev/null || true
+	@echo "stopped"
+
+## Start the HTTPS reverse proxy (self-signed, port 8443)
+tls:
+	./infrastructure/tls/start_tls_proxy.sh
+
+## Run the load test against the live stack
+load-test:
+	python3 load_test.py --requests 60 --concurrency 6
