@@ -13,17 +13,22 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.10" ]
+    env:
+      # Job-level, because the `secrets` context is not available in a
+      # step-level `if:` expression. Setting it here lets the upload step test
+      # `env.CODECOV_TOKEN` and skip cleanly when the secret is absent.
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -48,9 +53,13 @@ jobs:
             --cov=src --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=52
 
+      # codecov-action v4 requires a token for private repositories. The
+      # upload is skipped when CODECOV_TOKEN is not configured, so a fork or a
+      # private clone without the secret still gets a green build — the
+      # coverage gate above is what actually enforces the floor.
       - name: Upload coverage to Codecov
-        if: success()
-        uses: codecov/codecov-action@v3
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: unittests
