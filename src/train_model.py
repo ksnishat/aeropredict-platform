@@ -144,6 +144,41 @@ def _default_data_path() -> str:
     return "/opt/airflow/data/train_FD001.txt"
 
 
+def _incumbent_loss_path(model_dir: str) -> str:
+    return os.path.join(model_dir, "val_loss.json")
+
+
+def _read_incumbent_val_loss(model_dir: str) -> float | None:
+    """Return the validation loss of the checkpoint currently in ``model_dir``.
+
+    ``None`` means there is no recorded incumbent, so the caller should export
+    unconditionally. A missing file is treated as "no incumbent" rather than as
+    an error: the first run on a fresh checkout has nothing to compare against.
+    """
+    import json
+
+    path = _incumbent_loss_path(model_dir)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as fh:
+            value = json.load(fh).get("best_val_loss")
+        return float(value) if value is not None else None
+    except Exception:  # noqa: BLE001 - a corrupt sidecar must not block training
+        return None
+
+
+def _write_incumbent_val_loss(model_dir: str, best_val_loss: float) -> None:
+    """Record the exported model's validation loss for the next run to compare."""
+    import json
+
+    try:
+        with open(_incumbent_loss_path(model_dir), "w") as fh:
+            json.dump({"best_val_loss": float(best_val_loss)}, fh)
+    except Exception as e:  # noqa: BLE001 - sidecar is advisory only
+        print(f"Could not record the incumbent validation loss ({e})")
+
+
 def train(
     epochs: int = 50,
     batch_size: int = 32,
@@ -155,6 +190,7 @@ def train(
     data_path: str | None = None,
     rul_cap: int = 125,
     model_dir: str = "models",
+    force_export: bool = False,
 ):
     """Train the LSTM model with validation, early stopping, and MLflow tracking.
 
@@ -171,6 +207,9 @@ def train(
             also runs on a host checkout.
         rul_cap: Piecewise-linear RUL ceiling (see load_and_clean_data)
         model_dir: Directory for the exported TorchScript model and scaler
+        force_export: Export even when the new model is worse than the
+            incumbent. Off by default so a short smoke-test run cannot silently
+            replace a good serving checkpoint.
     """
     data_path = data_path or _default_data_path()
     # 1. Config MLOps (overridable for local runs outside docker-compose)
@@ -308,8 +347,31 @@ def train(
         # 8. Export for serving. The API loads a TorchScript module and needs
         # the exact scaler used here, otherwise it feeds the model
         # out-of-distribution inputs and predictions are meaningless.
+        #
+        # Guard: a short run (a smoke test, or a DAG triggered with a low epoch
+        # count) must not silently replace a good production checkpoint. This
+        # actually happened — a 1-epoch run overwrote a 50-epoch model and the
+        # API went back to predicting a near-constant RUL. The check compares
+        # validation loss against the incumbent's recorded loss and refuses to
+        # overwrite unless the new model is at least as good, or the caller
+        # explicitly opts in with force_export=True.
         os.makedirs(model_dir, exist_ok=True)
         scaler_path = os.path.join(model_dir, "scaler.joblib")
+        torchscript_path = os.path.join(model_dir, "lstm_best.pt")
+
+        incumbent_loss = _read_incumbent_val_loss(model_dir)
+        if (
+            not force_export
+            and incumbent_loss is not None
+            and best_val_loss > incumbent_loss
+        ):
+            print(
+                f"NOT exporting: best val loss {best_val_loss:.2f} is worse than "
+                f"the incumbent {incumbent_loss:.2f}. The serving checkpoint is "
+                f"unchanged. Pass force_export=True to override."
+            )
+            return model
+
         joblib.dump(scaler, scaler_path)
 
         model_cpu = model.to("cpu").eval()
@@ -317,8 +379,8 @@ def train(
         # CPU constant, so the exported module fails with "Input and hidden
         # tensors are not at the same device" the moment it is moved to CUDA.
         scripted = torch.jit.script(model_cpu)
-        torchscript_path = os.path.join(model_dir, "lstm_best.pt")
         scripted.save(torchscript_path)
+        _write_incumbent_val_loss(model_dir, best_val_loss)
         print(f"Exported TorchScript model to {torchscript_path} and scaler to {scaler_path}")
 
         # 9. Capture the training-time feature distribution so serving can
@@ -371,6 +433,12 @@ if __name__ == "__main__":
         "predict the mean.",
     )
     parser.add_argument("--model-dir", default="models")
+    parser.add_argument(
+        "--force-export",
+        action="store_true",
+        help="Export even when the new model is worse than the incumbent. Off by "
+        "default so a short smoke-test run cannot replace a good checkpoint.",
+    )
     args = parser.parse_args()
 
     train(
@@ -384,4 +452,5 @@ if __name__ == "__main__":
         data_path=args.data_path,
         rul_cap=args.rul_cap,
         model_dir=args.model_dir,
+        force_export=args.force_export,
     )

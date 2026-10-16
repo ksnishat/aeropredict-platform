@@ -136,3 +136,39 @@ class TestTrainingFunction:
         assert sig.parameters["learning_rate"].default == 0.001
         assert sig.parameters["patience"].default == 10
         assert sig.parameters["val_split"].default == 0.2
+
+
+class TestExportGuard:
+    """A short run must not silently replace a good serving checkpoint.
+
+    This actually happened: a 1-epoch smoke-test run overwrote a 50-epoch
+    production model, and the API went back to predicting a near-constant RUL
+    (36 for every engine). The guard compares validation loss against the
+    incumbent's recorded loss and refuses to export a worse model.
+    """
+
+    def test_no_incumbent_returns_none(self, tmp_path):
+        from src.train_model import _read_incumbent_val_loss
+
+        assert _read_incumbent_val_loss(str(tmp_path)) is None
+
+    def test_round_trips_the_recorded_loss(self, tmp_path):
+        from src.train_model import _read_incumbent_val_loss, _write_incumbent_val_loss
+
+        _write_incumbent_val_loss(str(tmp_path), 310.74)
+        assert _read_incumbent_val_loss(str(tmp_path)) == pytest.approx(310.74)
+
+    def test_corrupt_sidecar_is_treated_as_no_incumbent(self, tmp_path):
+        from src.train_model import _read_incumbent_val_loss
+
+        (tmp_path / "val_loss.json").write_text("{not json")
+        assert _read_incumbent_val_loss(str(tmp_path)) is None
+
+    def test_force_export_defaults_to_false(self):
+        import inspect
+
+        from src.train_model import train
+
+        sig = inspect.signature(train)
+        assert "force_export" in sig.parameters
+        assert sig.parameters["force_export"].default is False
