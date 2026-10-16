@@ -73,7 +73,12 @@ include = ["src*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+# The Airflow image runs Python 3.8, so the DAG-imported modules must stay
+# 3.8-compatible. Targeting 3.10 here let ruff *rewrite* Optional[str] into
+# `str | None`, which is a runtime TypeError on 3.8 — the DAG then failed with
+# "unsupported operand type(s) for |: 'type' and 'NoneType'". Targeting the
+# lowest supported version keeps the linter from reintroducing that bug.
+target-version = "py38"
 # Notebooks re-import the same names in each cell, which is normal in Jupyter
 # but trips F811. They are not linted.
 extend-exclude = ["notebooks", ".ipynb_checkpoints"]
@@ -82,7 +87,9 @@ extend-exclude = ["notebooks", ".ipynb_checkpoints"]
 select = ["E", "W", "F", "I", "B", "C4", "UP"]
 # B008: FastAPI requires File(...)/Depends(...) in argument defaults.
 # C408: dict() calls in Dash layout definitions are intentional.
-ignore = ["E501", "B008", "C408"]
+# UP006/UP035/UP045: these rewrite typing.List/dict/Optional into PEP 585/604
+# syntax, which is evaluated at runtime and fails on Python 3.8.
+ignore = ["E501", "B008", "C408", "UP006", "UP035", "UP045"]
 
 [tool.ruff.format]
 quote-style = "double"

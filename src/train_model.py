@@ -12,6 +12,7 @@ on NASA C-MAPSS sensor data. Includes:
 """
 import os
 import sys
+from typing import Optional
 
 import joblib
 import mlflow
@@ -148,7 +149,7 @@ def _incumbent_loss_path(model_dir: str) -> str:
     return os.path.join(model_dir, "val_loss.json")
 
 
-def _read_incumbent_val_loss(model_dir: str) -> float | None:
+def _read_incumbent_val_loss(model_dir: str) -> Optional[float]:
     """Return the validation loss of the checkpoint currently in ``model_dir``.
 
     ``None`` means there is no recorded incumbent, so the caller should export
@@ -187,7 +188,7 @@ def train(
     num_layers: int = 2,
     patience: int = 10,
     val_split: float = 0.2,
-    data_path: str | None = None,
+    data_path: Optional[str] = None,
     rul_cap: int = 125,
     model_dir: str = "models",
     force_export: bool = False,
