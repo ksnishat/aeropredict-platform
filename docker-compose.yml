@@ -95,6 +95,11 @@ services:
   airflow-webserver:
     image: ghcr.io/aeropredict/airflow:latest
     container_name: aeropredict_airflow_webserver
+    # Run as the host user with GID 0. The Airflow image requires GID 0,
+    # and the default uid 50000 cannot write to the host-owned bind
+    # mounts — which is why publishing retrained weights failed with
+    # Permission denied.
+    user: "${AIRFLOW_UID:-1000}:0"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     build:
@@ -129,7 +134,11 @@ services:
       - airflow_logs:/opt/airflow/logs
       # Training exports the TorchScript model and scaler here. ./src is a
       # read-only bind mount, so the exports need their own writable volume.
-      - airflow_models:/opt/airflow/models
+      # Bind mount, not a named volume: run_stack.sh starts the API on the
+      # host reading ./models, so a named volume would put the retrained
+      # checkpoint somewhere the API cannot see — the retrain would
+      # succeed and serving would not change.
+      - ./models:/opt/airflow/models
     ports:
       # 8081, not 8080: the documented port map reserves 8080 elsewhere and
       # every README and the system-design guide reference 8081.
@@ -152,6 +161,11 @@ services:
   airflow-scheduler:
     image: ghcr.io/aeropredict/airflow:latest
     container_name: aeropredict_airflow_scheduler
+    # Run as the host user with GID 0. The Airflow image requires GID 0,
+    # and the default uid 50000 cannot write to the host-owned bind
+    # mounts — which is why publishing retrained weights failed with
+    # Permission denied.
+    user: "${AIRFLOW_UID:-1000}:0"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     build:
@@ -186,7 +200,11 @@ services:
       - airflow_logs:/opt/airflow/logs
       # Training exports the TorchScript model and scaler here. ./src is a
       # read-only bind mount, so the exports need their own writable volume.
-      - airflow_models:/opt/airflow/models
+      # Bind mount, not a named volume: run_stack.sh starts the API on the
+      # host reading ./models, so a named volume would put the retrained
+      # checkpoint somewhere the API cannot see — the retrain would
+      # succeed and serving would not change.
+      - ./models:/opt/airflow/models
     command: scheduler
     depends_on:
       - airflow-webserver
@@ -286,7 +304,7 @@ services:
       # separate volume here meant "continuous learning" retrained a model that
       # was never served: the DAG wrote to airflow_models while the API read
       # aeropredict_models.
-      - airflow_models:/app/models
+      - ./models:/app/models
     environment:
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
