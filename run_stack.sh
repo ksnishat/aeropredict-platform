@@ -75,6 +75,8 @@ start_watchdog() {
       sleep 30
       if ! curl -sf -o /dev/null --max-time 5 "http://localhost:$API_PORT/" 2>/dev/null; then
         printf '[%s] API on :%s is down, restarting\n' "$(date +%H:%M:%S)" "$API_PORT" >> "$LOG_DIR/watchdog.log"
+        # shellcheck disable=SC2086  # $MODEL_ENV is a space-separated list of
+        # KEY=value pairs that must word-split into separate `env` arguments.
         ( cd "$DIR" && env $MODEL_ENV nohup conda run -n "$ENV_NAME" --cwd "$DIR" \
             python "$LOG_DIR/run_api.py" >> "$LOG_DIR/api.log" 2>&1 & )
       fi
@@ -109,6 +111,8 @@ uvicorn.run(app, host="0.0.0.0", port=$API_PORT, log_level="error")
 PY
   (
     cd "$DIR" || exit 1
+    # shellcheck disable=SC2086  # $MODEL_ENV is a space-separated list of
+    # KEY=value pairs that must word-split into separate `env` arguments.
     env $MODEL_ENV nohup conda run -n "$ENV_NAME" --cwd "$DIR" \
       python "$LOG_DIR/run_api.py" > "$LOG_DIR/api.log" 2>&1 &
   )
