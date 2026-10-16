@@ -17,7 +17,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![OS: Linux](https://img.shields.io/badge/OS-Linux-2F2F2F?style=flat)
 
-**AeroPredict** is a production-grade MLOps platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It integrates a PyTorch LSTM network for time-series forecasting with a GenAI diagnostics module (a local LLM via Ollama, model configurable) that generates maintenance recommendations.
+**AeroPredict** is a production-shaped MLOps platform designed to predict the Remaining Useful Life (RUL) of aircraft turbofan engines. It integrates a PyTorch LSTM network for time-series forecasting with a GenAI diagnostics module (a local LLM via Ollama, model configurable) that generates maintenance recommendations.
 
 The system is built on the NASA C-MAPSS dataset and orchestrates the entire lifecycle—from data ingestion to technician reporting—using Apache Airflow, MLflow, and Docker.
 
@@ -163,6 +163,45 @@ ensembles or attention architectures, so there is still headroom. The next
 tracked step is replacing the LSTM with a temporal-convolution or small
 Transformer encoder. This is documented rather than hidden so the metrics above
 are not overstated.
+
+## Production readiness
+
+This is a **production-shaped** system, not a production-hardened one. The
+distinction matters, so here is exactly where it stands.
+
+### What is in place
+
+| Capability | Status |
+|-----------|--------|
+| End-to-end MLOps loop | Airflow retrains, MLflow tracks, the API hot-swaps weights without a restart |
+| Drift detection | PSI against a training-time baseline, exposed at `/drift` and as Prometheus gauges |
+| Alerting | 5 Prometheus rules per project, verified loading and evaluating |
+| Authentication | `X-API-Key` on `/predict`, `/drift` and `/admin/reload-model` when `API_KEY` is set |
+| TLS | nginx reverse proxy, TLSv1.2/1.3, security headers (`infrastructure/tls/`) |
+| Upload limits | 10 MiB default, enforced before the body is read (`MAX_UPLOAD_BYTES`) |
+| Self-healing | Watchdog restarts the API and MLflow if they crash; containers use `restart: unless-stopped` |
+| Tests | Unit + live integration suites, run in CI |
+| Load tested | Measured p50/p95/p99 and throughput — see `job_preparation/load_test_results.md` |
+
+### What is not in place
+
+| Gap | Why it matters |
+|-----|---------------|
+| **No multi-tenancy or RBAC** | One shared API key. No per-user identity, quotas or audit trail. |
+| **No secret management** | Credentials are environment variables with demo defaults. A deployment needs Vault, SOPS or a cloud secret store. |
+| **Single node, no HA** | One host, one worker process per API. No replication, no failover. |
+| **No sustained soak test** | Load figures are a 60-request burst, not a multi-hour run. |
+| **Drift thresholds not tuned** | 0.10 / 0.25 are the conventional PSI bands, not calibrated to this data. |
+| **No model rollback** | The reload endpoint swaps weights forward only. A bad model needs a manual revert. |
+
+### The honest one-line summary
+
+> "Production-shaped: the full MLOps loop, drift detection, alerting, auth, TLS
+> and self-healing are all in place and verified. Not production-hardened: no
+> RBAC, no secret manager, single node, and the load numbers are a burst rather
+> than a soak test."
+
+---
 
 ## Quickstart
 

@@ -34,9 +34,24 @@ def _require_live() -> None:
         pytest.skip("set LIVE_STACK=1 to run integration tests against the live stack")
 
 
+# The APIs enforce X-API-Key when API_KEY is set. The live stack runs with auth
+# enabled, so every request must carry the key. Set LIVE_API_KEY to match the
+# stack; the default matches run_stack.sh's demo value.
+API_KEY = os.getenv("LIVE_API_KEY", "demo-secret-key")
+AUTH_HEADERS = {"X-API-Key": API_KEY}
+
+
+def _auth(kw):
+    """Merge the API key into a request's headers."""
+    headers = dict(kw.pop("headers", {}) or {})
+    headers.update(AUTH_HEADERS)
+    kw["headers"] = headers
+    return kw
+
+
 def _get(url: str, **kw):
     try:
-        return requests.get(url, timeout=TIMEOUT, **kw)
+        return requests.get(url, timeout=TIMEOUT, **_auth(kw))
     except requests.RequestException as exc:  # pragma: no cover - environment dependent
         pytest.skip(f"service unreachable: {exc}")
 
@@ -77,10 +92,9 @@ def test_predict_returns_a_real_prediction():
     # The API parses uploads with sep=r"\s+", matching the raw C-MAPSS format.
     csv = "\n".join(" ".join(f"{v:g}" for v in row) for row in engine_100)
 
-    r = requests.post(
-        f"{API}/predict",
-        files={"file": ("engine100.csv", csv, "text/csv")},
+    r = requests.post(f"{API}/predict", files={"file": ("engine100.csv", csv, "text/csv")},
         timeout=TIMEOUT,
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -92,10 +106,9 @@ def test_predict_returns_a_real_prediction():
 
 def test_predict_rejects_non_sensor_payload():
     _require_live()
-    r = requests.post(
-        f"{API}/predict",
-        files={"file": ("junk.csv", "hello,world\nfoo,bar\n", "text/csv")},
+    r = requests.post(f"{API}/predict", files={"file": ("junk.csv", "hello,world\nfoo,bar\n", "text/csv")},
         timeout=TIMEOUT,
+        headers=AUTH_HEADERS,
     )
     assert r.status_code == 422, r.text
 
