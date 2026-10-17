@@ -259,11 +259,29 @@ distinction matters, so here is exactly where it stands.
 
 ### 1. Get the dataset
 
+The dataset is **NASA C-MAPSS FD001**, published by the NASA Prognostics Center
+of Excellence. It is not committed here — it is ~4 MB of text and is freely
+redistributable, but keeping it out of git keeps the clone small.
+
+Download the FD001 files from any of these mirrors:
+
+- [NASA PCoE repository](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) — the original source
+- [Kaggle: NASA C-MAPSS](https://www.kaggle.com/datasets/bishalsarang/nasa-turbofan-engine-degradation-simulation-dataset) — same files, easier download
+
+You need three files: `train_FD001.txt`, `test_FD001.txt`, `RUL_FD001.txt`.
+
 ```bash
 mkdir -p data/raw
-cp CMAPSSData/train_FD001.txt CMAPSSData/test_FD001.txt CMAPSSData/RUL_FD001.txt data/raw/
+cp /path/to/train_FD001.txt /path/to/test_FD001.txt /path/to/RUL_FD001.txt data/raw/
 ls data/raw/   # train_FD001.txt  test_FD001.txt  RUL_FD001.txt
 ```
+
+The training script resolves the path automatically — container mount first,
+then `data/raw/`, then the in-repo `CMAPSSData/` — so no arguments are needed.
+
+**Without the dataset** you can still run the API, the tests and the load test:
+the model checkpoint is committed, and the integration tests skip cleanly when
+the data is absent.
 
 ### 2. Install dependencies
 

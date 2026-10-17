@@ -50,6 +50,10 @@ def main() -> int:
             continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
+        # This script necessarily contains the forbidden strings in its own
+        # lists, so it would always flag itself.
+        if path.name == "check_selfcontained.py":
+            continue
 
         try:
             text = path.read_text(errors="ignore")
