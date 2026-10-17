@@ -1,5 +1,9 @@
 apiVersion: 1
 
+# The dashboards are mounted at /var/lib/grafana/dashboards (see the grafana
+# service in docker-compose.yml and start_grafana in run_stack.sh). The old
+# config pointed at /etc/grafana/provisioning/dashboards/<project>, which was
+# never mounted, so Grafana started with zero dashboards.
 providers:
   - name: 'Default'
     orgId: 1
@@ -9,44 +13,5 @@ providers:
     updateIntervalSeconds: 10
     allowUiUpdates: true
     options:
-      path: /etc/grafana/provisioning/dashboards
-
-  - name: 'AeroPredict'
-    orgId: 1
-    folder: 'AeroPredict'
-    type: file
-    disableDeletion: false
-    updateIntervalSeconds: 10
-    allowUiUpdates: true
-    options:
-      path: /etc/grafana/provisioning/dashboards/aeropredict
-
-  - name: 'InfraLens'
-    orgId: 1
-    folder: 'InfraLens'
-    type: file
-    disableDeletion: false
-    updateIntervalSeconds: 10
-    allowUiUpdates: true
-    options:
-      path: /etc/grafana/provisioning/dashboards/infralens
-
-  - name: 'Rossmann'
-    orgId: 1
-    folder: 'Rossmann'
-    type: file
-    disableDeletion: false
-    updateIntervalSeconds: 10
-    allowUiUpdates: true
-    options:
-      path: /etc/grafana/provisioning/dashboards/rossmann
-
-  - name: 'OvoScan'
-    orgId: 1
-    folder: 'OvoScan'
-    type: file
-    disableDeletion: false
-    updateIntervalSeconds: 10
-    allowUiUpdates: true
-    options:
-      path: /etc/grafana/provisioning/dashboards/ovoscan
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

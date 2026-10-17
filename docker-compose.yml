@@ -274,11 +274,18 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=aeropredict
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      # Read by provisioning/datasources/datasources.yml. The compose
+      # service is named `prometheus`; run_stack.sh overrides this with
+      # the prom_<project> container name it creates instead.
+      - PROMETHEUS_URL=${PROMETHEUS_URL:-http://prometheus:9090}
     depends_on:
       - prometheus
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      # Without this mount Grafana starts with zero dashboards: the
+      # provider in dashboards.yml points at /var/lib/grafana/dashboards.
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s

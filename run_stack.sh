@@ -17,6 +17,13 @@
 set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# A user-defined network, because the default bridge has no DNS. Grafana
+# reaches Prometheus by container name, which only resolves on a
+# user-defined network.
+STACK_NETWORK="mlops-stack"
+docker network inspect "$STACK_NETWORK" >/dev/null 2>&1 \
+  || docker network create "$STACK_NETWORK" >/dev/null
 LOG_DIR="$DIR/.stack-logs"
 mkdir -p "$LOG_DIR"
 
@@ -193,6 +200,7 @@ EOF
 
 docker rm -f "prom_$PROJECT" >/dev/null 2>&1
 if docker run -d --name "prom_$PROJECT" -p "${PROM_PORT}:9090" \
+    --network "$STACK_NETWORK" \
     --add-host=host.docker.internal:host-gateway \
     -v "$PROM_CFG:/etc/prometheus/prometheus.yml:ro" \
     prom/prometheus:v2.45.0 >/dev/null 2>&1; then
@@ -204,9 +212,16 @@ fi
 
 # ------------------------------------------------------------ Grafana
 docker rm -f "graf_$PROJECT" >/dev/null 2>&1
+# The provisioning and dashboard directories must be mounted, or Grafana starts
+# with no datasource and no dashboards. PROMETHEUS_URL points at the
+# prom_$PROJECT container created above, not a compose service name.
 if docker run -d --name "graf_$PROJECT" -p "${GRAFANA_PORT}:3000" \
+    --network "$STACK_NETWORK" \
     -e GF_SECURITY_ADMIN_USER=admin -e GF_SECURITY_ADMIN_PASSWORD=admin \
     -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
+    -e PROMETHEUS_URL="http://prom_$PROJECT:9090" \
+    -v "$DIR/infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro" \
+    -v "$DIR/infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
     grafana/grafana:latest >/dev/null 2>&1; then
   for _ in $(seq 1 30); do
     curl -sf -o /dev/null --max-time 2 "http://localhost:$GRAFANA_PORT/api/health" 2>/dev/null && break

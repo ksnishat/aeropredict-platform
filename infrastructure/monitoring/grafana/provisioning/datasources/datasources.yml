@@ -1,25 +1,22 @@
 apiVersion: 1
 
+# The Prometheus container is named prom_<project> by run_stack.sh and
+# start_all_stacks.sh, not "prometheus". The URL is read from PROMETHEUS_URL so
+# the same file works whether Grafana is started by the orchestrator or by
+# docker-compose, and so a rename in one place cannot silently break the
+# datasource again.
+#
+# The uid is pinned because the dashboards reference it by name. Without it
+# Grafana generates a random uid and every panel shows "datasource not found".
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: ${PROMETHEUS_URL}
     isDefault: true
     editable: false
     jsonData:
       timeInterval: "15s"
       queryTimeout: "60s"
       httpMethod: "POST"
-
-  - name: Loki
-    type: loki
-    access: proxy
-    url: http://loki:3100
-    editable: false
-    jsonData:
-      maxLines: 1000
-      derivedFields:
-        - name: traceID
-          matcherRegex: "trace_id=(\\w+)"
-          url: "$${__value.raw}"

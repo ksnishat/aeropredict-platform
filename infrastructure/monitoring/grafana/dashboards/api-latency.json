@@ -1,77 +1,130 @@
 {
-  "dashboard": {
-    "title": "AeroPredict API Latency Dashboard",
-    "panels": [
-      {
-        "id": 1,
-        "title": "API Request Rate",
-        "type": "graph",
-        "targets": [
-          {
-            "expr": "rate(aeropredict_requests_total[5m])",
-            "legendFormat": "Requests/sec"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+  "uid": "aeropredict-main-latency",
+  "title": "AeroPredict API Latency",
+  "tags": [
+    "aeropredict",
+    "api"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "p50 latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       },
-      {
-        "id": 2,
-        "title": "API Latency (P50/P95/P99)",
-        "type": "graph",
-        "targets": [
-          {
-            "expr": "histogram_quantile(0.50, rate(aeropredict_request_duration_seconds_bucket[5m]))",
-            "legendFormat": "P50"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(aeropredict_request_duration_seconds_bucket[5m]))",
-            "legendFormat": "P95"
-          },
-          {
-            "expr": "histogram_quantile(0.99, rate(aeropredict_request_duration_seconds_bucket[5m]))",
-            "legendFormat": "P99"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(aeropredict_prediction_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
       },
-      {
-        "id": 3,
-        "title": "Error Rate",
-        "type": "graph",
-        "targets": [
-          {
-            "expr": "rate(aeropredict_requests_total{status=\"error\"}[5m])",
-            "legendFormat": "Errors/sec"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
-      },
-      {
-        "id": 4,
-        "title": "Active Connections",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "aeropredict_active_connections",
-            "legendFormat": "Active"
-          }
-        ],
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
       }
-    ],
-    "refresh": "15s",
-    "time": {
-      "from": "now-1h",
-      "to": "now"
     },
-    "schemaVersion": 27,
-    "version": 1,
-    "annotations": {
-      "list": []
+    {
+      "id": 2,
+      "title": "p95 latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(aeropredict_prediction_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
-    "templating": {
-      "list": []
+    {
+      "id": 3,
+      "title": "p99 latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(aeropredict_prediction_latency_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
-    "tags": ["aeropredict", "api", "latency"]
-  }
+    {
+      "id": 4,
+      "title": "Request rate by status",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (risk_level) (rate(aeropredict_predictions_total[5m]))",
+          "legendFormat": "__auto",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    }
+  ]
 }
