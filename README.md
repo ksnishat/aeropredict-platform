@@ -227,7 +227,7 @@ distinction matters, so here is exactly where it stands.
 | Upload limits | 10 MiB default, enforced before the body is read (`MAX_UPLOAD_BYTES`) |
 | Self-healing | Watchdog restarts the API and MLflow if they crash; containers use `restart: unless-stopped` |
 | Tests | Unit + live integration suites, run in CI |
-| Load tested | Measured p50/p95/p99 and throughput — see `job_preparation/load_test_results.md` |
+| Load tested | `python3 load_test.py` measures p50/p95/p99 and throughput against the running API |
 
 ### What is not in place
 

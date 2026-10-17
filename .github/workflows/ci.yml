@@ -209,6 +209,9 @@ jobs:
       - name: Check Grafana dashboards reference real metrics
         run: python .github/scripts/check_grafana.py
 
+      - name: Check the repository is self-contained
+        run: python .github/scripts/check_selfcontained.py
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
