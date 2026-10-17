@@ -582,7 +582,7 @@ KNOWLEDGE_BASE_PATH=/path/to/reference.txt python -m src.rag_inference
 | **Pods crashing with OOMKill** | Increase resource limits in values.yaml or check for memory leaks in custom code |
 | **Database connection failed** | Verify PostgreSQL service is running and credentials in secrets are correct |
 | **Prometheus not scraping metrics** | Check that `/metrics` endpoint is exposed and ServiceMonitor is configured |
-| **Grafana shows "No data"** | The datasource must point at the Prometheus *container IP*, not `host.docker.internal`; re-run `provision_dashboards.py` |
+| **Grafana shows "No data"** | The provisioning or dashboards directory is not mounted, or Grafana is not on the `mlops-stack` network so it cannot resolve `prom_<project>` | Run `python3 provision_dashboards.py` — it reports which of the two it is |
 | **Model returns a constant RUL** | Known limitation of the current LSTM — see [Known limitation](#known-limitation-honest-disclosure) |
 | **Airflow DAG fails at `retrain_lstm_model`** | Ensure `AEROPREDICT_SRC` points at the mounted `src/` directory and that MLflow is reachable from the container |
 

@@ -206,6 +206,9 @@ jobs:
       - name: Check for stale metrics and overclaims
         run: python .github/scripts/check_docs.py
 
+      - name: Check Grafana dashboards reference real metrics
+        run: python .github/scripts/check_grafana.py
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
