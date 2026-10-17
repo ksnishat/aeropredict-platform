@@ -364,6 +364,22 @@ They assert the API returns a real prediction for a known engine, that
 Prometheus is actually scraping the API (not merely healthy), and that MLflow,
 Grafana and MinIO are reachable.
 
+## Screenshots
+
+Captured from the running stack, not mocked up.
+
+### Grafana — model diagnostics
+
+![AeroPredict Grafana dashboard](docs/screenshots/grafana-dashboard.png)
+
+### API — OpenAPI schema
+
+![AeroPredict Swagger UI](docs/screenshots/api-swagger.png)
+
+### Airflow — scheduled retraining
+
+![AeroPredict Airflow DAGs](docs/screenshots/airflow-dags.png)
+
 ## Monitoring & Live Demo
 
 Two helper scripts at the repository root start the API plus Prometheus and
