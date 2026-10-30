@@ -143,3 +143,63 @@ def test_predict_serialization(client, tmp_path):
     assert validated.rul == data["rul"]
     assert validated.risk_level == data["risk_level"]
     assert validated.maintenance_recommendation == data["maintenance_recommendation"]
+
+
+class TestAsyncReport:
+    """Tests for the decoupled report path."""
+
+    def test_async_report_returns_prediction_immediately(self, client, sample_sensor_csv):
+        """async_report=true must not block on the LLM."""
+        with open(sample_sensor_csv, "rb") as f:
+            response = client.post(
+                "/predict?async_report=true", files={"file": f.read()}
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["rul"], int)
+        assert data["report_status"] == "pending"
+        assert data["report_id"]
+        # The synchronous field stays present but empty so the response shape
+        # is unchanged for clients that parse it unconditionally.
+        assert data["maintenance_recommendation"] == ""
+
+    def test_async_report_is_retrievable(self, client, sample_sensor_csv):
+        """The background task must eventually populate the store."""
+        with open(sample_sensor_csv, "rb") as f:
+            start = client.post("/predict?async_report=true", files={"file": f.read()})
+        report_id = start.json()["report_id"]
+
+        # TestClient runs BackgroundTasks synchronously after the response,
+        # so the report is ready by the time we poll.
+        response = client.get(f"/reports/{report_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["report_id"] == report_id
+        assert data["status"] == "ready"
+        assert data["report"]
+        assert data["source"] in ("rag", "template")
+
+    def test_sync_mode_is_default(self, client, sample_sensor_csv):
+        """Omitting async_report must preserve the original behaviour."""
+        with open(sample_sensor_csv, "rb") as f:
+            response = client.post("/predict", files={"file": f.read()})
+        data = response.json()
+        assert data["report_id"] is None
+        assert data["report_status"] is None
+        assert len(data["maintenance_recommendation"]) > 0
+
+    def test_unknown_report_id_returns_404(self, client):
+        response = client.get("/reports/does-not-exist")
+        assert response.status_code == 404
+
+    def test_report_store_is_bounded(self):
+        """Eviction must cap memory use."""
+        from src.api import _REPORT_STORE, _REPORT_STORE_MAX, _store_report
+
+        _REPORT_STORE.clear()
+        for i in range(_REPORT_STORE_MAX + 25):
+            _store_report(f"id-{i}", "report", "template")
+        assert len(_REPORT_STORE) == _REPORT_STORE_MAX
+        assert "id-0" not in _REPORT_STORE
+        assert f"id-{_REPORT_STORE_MAX + 24}" in _REPORT_STORE
+        _REPORT_STORE.clear()

@@ -38,7 +38,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # Install from the lock file when present. requirements.txt uses
+          # unpinned ranges, so the same commit resolves to different versions
+          # as upstream releases — which is how a green build turns red without
+          # a code change. The lock pins every direct and transitive dependency.
+          if [ -f requirements.lock ]; then
+            pip install -r requirements.lock
+          else
+            pip install -r requirements.txt
+          fi
           if [ -f "requirements-dev.txt" ]; then pip install -r requirements-dev.txt; fi
           pip install pytest pytest-cov
 
@@ -51,7 +59,7 @@ jobs:
         run: |
           python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=5 --disable-warnings \
             --cov=src --cov-report=xml --cov-report=term-missing \
-            --cov-fail-under=52
+            --cov-fail-under=60
 
       # codecov-action v4 requires a token for private repositories. The
       # upload is skipped when CODECOV_TOKEN is not configured, so a fork or a
@@ -244,7 +252,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, shell, yaml, docs, terraform]
+    needs: [test, shell, yaml, docs, terraform, lockfile]
     if: always()
     steps:
       - name: Report
@@ -263,3 +271,32 @@ jobs:
             exit 1
           fi
           echo "All checks passed."
+
+  # ---------------------------------------------------------------- lockfile
+  lockfile:
+    name: Lock file in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # A lock file that has drifted from requirements.txt is worse than no
+      # lock file: CI installs the stale pins and passes, while a fresh
+      # `pip install -r requirements.txt` gets different versions. This job
+      # regenerates the lock and fails if the result differs from what is
+      # committed, so the two cannot silently diverge.
+      - name: Regenerate and compare
+        run: |
+          python -m pip install --upgrade pip
+          cp requirements.lock /tmp/committed.lock
+          python tools/gen_lock.py requirements.txt requirements.lock
+          if ! diff -q /tmp/committed.lock requirements.lock; then
+            echo "requirements.lock is out of date."
+            echo "Run: python tools/gen_lock.py requirements.txt requirements.lock"
+            diff /tmp/committed.lock requirements.lock | head -40
+            exit 1
+          fi
+          echo "requirements.lock matches requirements.txt"

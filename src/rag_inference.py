@@ -48,6 +48,8 @@ from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from retry import retry_transient
+
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_LLM_MODEL = "llama3.2"
 DEFAULT_PERSIST_DIR = "data/chroma"
@@ -292,9 +294,18 @@ class MaintenanceRAG:
 
         passages = self.retrieve(query, k=4)
         context = "\n\n---\n\n".join(p["content"] for p in passages)
-        return self.chain.invoke(
-            {"context": context, "rul": f"{rul_prediction:.0f}", "band": band}
-        )
+        # Ollama returns 503 while a model is loading and drops connections
+        # under concurrent load. Without a retry those arrive as a 500 on a
+        # request that succeeds on a second attempt.
+        return _invoke_chain(self.chain, context, band, rul_prediction)
+
+
+@retry_transient(attempts=3, base_delay=0.4, max_delay=4.0)
+def _invoke_chain(chain, context: str, band: str, rul_prediction: float):
+    """Run the RAG chain, retrying only transient transport failures."""
+    return chain.invoke(
+        {"context": context, "rul": f"{rul_prediction:.0f}", "band": band}
+    )
 
 
 def _fallback_report(rul_prediction: float) -> str:

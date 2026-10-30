@@ -11,19 +11,31 @@ import io
 import os
 import sys
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel
 
 # Allow `python src/api.py` as well as `uvicorn src.api:app`.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from auth import auth_enabled, require_api_key
 from data_preprocessing import preprocess_for_inference
+from ratelimit import PREDICT_LIMIT, READ_LIMIT, limiter
+from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload
+from versioning import install as install_versioning
 
 # Prometheus instrumentation
 try:
@@ -308,6 +320,7 @@ app = FastAPI(
     description="RUL Prediction for NASA C-MAPSS with GenAI Diagnostics",
     lifespan=lifespan,
 )
+install_rate_limit(app)
 
 
 # Input Schema
@@ -316,6 +329,53 @@ class PredictionResponse(BaseModel):
     risk_level: str
     maintenance_recommendation: str
     drift: dict | None = None
+    # Present only when the caller asked for the report to be generated in the
+    # background. Poll /reports/{report_id} for the result.
+    report_id: str | None = None
+    report_status: str | None = None
+
+
+class ReportResponse(BaseModel):
+    report_id: str
+    status: str
+    report: str | None = None
+    source: str | None = None
+
+
+# In-memory store for asynchronously generated reports.
+#
+# Deliberately bounded and process-local: this is a single-process demo service,
+# and an unbounded dict would leak memory under sustained load. A real
+# deployment would use Redis or a database, and would survive a restart. The
+# bound is what keeps the failure mode "old reports expire" rather than "the
+# process runs out of memory".
+_REPORT_STORE: dict[str, dict] = {}
+_REPORT_STORE_MAX = 256
+
+
+def _store_report(report_id: str, report: str, source: str) -> None:
+    """Record a finished report, evicting the oldest entry when full."""
+    if len(_REPORT_STORE) >= _REPORT_STORE_MAX:
+        # dicts preserve insertion order, so the first key is the oldest.
+        oldest = next(iter(_REPORT_STORE))
+        _REPORT_STORE.pop(oldest, None)
+    _REPORT_STORE[report_id] = {"status": "ready", "report": report, "source": source}
+
+
+def _generate_report_task(report_id: str, rul: int) -> None:
+    """Background worker: generate the report and store it.
+
+    Runs in a thread pool via BackgroundTasks, so the slow LLM call never
+    touches the event loop.
+    """
+    try:
+        report, source = _generate_report_blocking(rul)
+        _store_report(report_id, report, source)
+        if RAG_REPORT_COUNT is not None:
+            RAG_REPORT_COUNT.labels(source=source).inc()
+    except Exception as exc:  # noqa: BLE001 - a failed report must not crash
+        print(f"Background report generation failed ({exc})")
+        _store_report(report_id, _template_report(rul), "template")
 
 
 @app.get("/")
@@ -333,12 +393,27 @@ def health_check():
 
 @app.post("/predict", response_model=PredictionResponse,
           dependencies=[Depends(require_api_key), Depends(enforce_content_length)])
-async def predict_rul(file: UploadFile = File(...)):
+@limiter.limit(PREDICT_LIMIT)
+async def predict_rul(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    async_report: bool = False,
+):
     """
     Predict RUL from uploaded sensor data CSV.
 
     Expected format: NASA C-MAPSS style (space-separated, no header).
     Returns: RUL cycles, risk level, and maintenance recommendation.
+
+    ``async_report=true`` returns the prediction immediately and generates the
+    maintenance report in the background. Poll ``/reports/{report_id}`` for it.
+
+    Why this exists: the RUL prediction takes ~50 ms, but the LLM report takes
+    1.2-2.1 s. Serving both in one response gated a fast, deterministic
+    prediction behind a slow, non-deterministic one — a load test at concurrency
+    6 measured p50 10.3 s, because Ollama serialises requests. With
+    ``async_report=true`` the prediction path is no longer bounded by the LLM.
     """
     try:
         # 1. READ DATA
@@ -353,14 +428,11 @@ async def predict_rul(file: UploadFile = File(...)):
         # 3. DETERMINE RISK
         risk = calculate_risk_level(predicted_rul)
 
-        # 4. GENAI REPORT (ChromaDB retrieval + local LLM, template fallback)
-        report, report_source = await get_genai_report(predicted_rul)
-
-        # 5. DRIFT: record the observed sensor values against the training
+        # 4. DRIFT: record the observed sensor values against the training
         # baseline. Done before metrics so the gauges reflect this request.
         drift = observe_drift(df)
 
-        # 6. METRICS
+        # 5. METRICS that do not depend on the report
         if PREDICTION_COUNT is not None:
             PREDICTION_COUNT.labels(risk_level=risk).inc()
             PREDICTION_LATENCY.observe(elapsed)
@@ -368,8 +440,26 @@ async def predict_rul(file: UploadFile = File(...)):
             MODEL_LOADED_GAUGE.set(1 if model_loaded else 0)
             RAG_AVAILABLE_GAUGE.set(1 if rag_agent is not None else 0)
             RAG_MODEL_MISMATCH.set(1 if rag_model_warning else 0)
-            RAG_REPORT_COUNT.labels(source=report_source).inc()
             publish_drift_metrics(drift)
+
+        # 6a. ASYNC MODE: return now, generate the report in the background.
+        if async_report:
+            report_id = uuid.uuid4().hex
+            _REPORT_STORE[report_id] = {"status": "pending", "report": None, "source": None}
+            background_tasks.add_task(_generate_report_task, report_id, predicted_rul)
+            return {
+                "rul": predicted_rul,
+                "risk_level": risk,
+                "maintenance_recommendation": "",
+                "drift": drift,
+                "report_id": report_id,
+                "report_status": "pending",
+            }
+
+        # 6b. SYNC MODE (default): unchanged behaviour, report in the response.
+        report, report_source = await get_genai_report(predicted_rul)
+        if RAG_REPORT_COUNT is not None:
+            RAG_REPORT_COUNT.labels(source=report_source).inc()
 
         return {
             "rul": predicted_rul,
@@ -382,6 +472,26 @@ async def predict_rul(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/reports/{report_id}", response_model=ReportResponse,
+         dependencies=[Depends(require_api_key)])
+@limiter.limit(READ_LIMIT)
+def get_report(request: Request, report_id: str):
+    """Fetch a report generated by ``/predict?async_report=true``.
+
+    Returns 404 when the id is unknown, which includes reports evicted from the
+    bounded store. The status is ``pending`` until the background task finishes.
+    """
+    entry = _REPORT_STORE.get(report_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired report_id")
+    return {
+        "report_id": report_id,
+        "status": entry["status"],
+        "report": entry["report"],
+        "source": entry["source"],
+    }
 
 
 def observe_drift(df: pd.DataFrame) -> dict:
@@ -533,3 +643,14 @@ def _file_mtime(path: str):
         ).isoformat()
     except OSError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# API versioning
+# ---------------------------------------------------------------------------
+# Called at the *end* of the module on purpose. `install_versioning` clones the
+# routes that already exist, so running it next to `install_rate_limit(app)`
+# (before any @app.post/@app.get has executed) would find nothing to clone and
+# silently alias zero endpoints. Keeping it last means every route defined above
+# gets a /v1 alias, and the unversioned paths keep working unchanged.
+install_versioning(app)

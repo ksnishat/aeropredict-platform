@@ -1,9 +1,29 @@
 """Shared pytest fixtures for all AeroPredict tests."""
 
+import importlib.util
 import os
 import tempfile
 
 import pytest
+
+# Optional dependencies the suite exercises. They are declared in
+# requirements.txt and therefore pinned in requirements.lock, so CI has them.
+# A developer env created before the lock may not, and without this guard the
+# failure reads as 27 broken tests instead of "three packages are missing".
+_OPTIONAL = {
+    "bentoml": "tests/test_rul_service.py",
+    "pythonjsonlogger": "tests/test_pipeline_scripts.py",
+    "pytorch_lightning": "tests/test_train_lightning.py",
+}
+
+
+def pytest_ignore_collect(collection_path, config):
+    """Skip a test module when its optional dependency is not installed."""
+    path = str(collection_path)
+    for module, test_file in _OPTIONAL.items():
+        if path.endswith(test_file) and importlib.util.find_spec(module) is None:
+            return True
+    return None
 
 
 @pytest.fixture(scope="session")
