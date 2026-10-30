@@ -1,0 +1,38 @@
+# Serving-only dependencies for the AeroPredict API.
+#
+# The full requirements.txt pulls the CUDA build of torch (3.2 GB of nvidia
+# wheels), triton (895 MB) and pyspark (347 MB). None of that is needed to
+# serve: the model is TorchScript and runs on CPU. Installing the CPU wheel
+# index keeps the image small enough for a free/cheap cloud tier.
+#
+# Install with:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+#               -r requirements-serve.txt
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- Data & ML (CPU only) ---
+numpy
+pandas
+scikit-learn
+torch==2.14.1+cpu
+joblib
+
+# --- API & serving ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+prometheus-client
+requests
+
+# --- RAG (optional at runtime; the API degrades gracefully without it) ---
+langchain-core
+langchain-community
+langchain-chroma
+chromadb
+sentence-transformers
+pypdf
+
+# --- Logging ---
+python-json-logger

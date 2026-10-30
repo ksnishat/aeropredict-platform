@@ -27,14 +27,14 @@ variable "tags" {
 
 # Redis Cache
 resource "azurerm_redis_cache" "main" {
-  name                = "${var.project_name}-${var.environment}-redis"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  capacity            = 1
-  family              = "C"
-  sku_name            = "Standard"
-  enable_non_ssl_port = false
-  minimum_tls_version = "1.2"
+  name                 = "${var.project_name}-${var.environment}-redis"
+  location             = var.location
+  resource_group_name  = var.resource_group_name
+  capacity             = 1
+  family               = "C"
+  sku_name             = "Standard"
+  non_ssl_port_enabled = false
+  minimum_tls_version  = "1.2"
 
   redis_configuration {
     maxmemory_reserved = 2
@@ -51,7 +51,7 @@ output "hostname" {
 }
 
 output "primary_key" {
-  value       = azurerm_redis_cache.main.primary_key
+  value       = azurerm_redis_cache.main.primary_access_key
   description = "Redis primary key"
   sensitive   = true
 }

@@ -100,14 +100,14 @@ resource "azurerm_resource_group" "main" {
 module "aks" {
   source = "./modules/aks"
 
-  project_name         = var.project_name
-  environment          = var.environment
-  resource_group_name  = azurerm_resource_group.main.name
-  location             = var.location
-  kubernetes_version   = var.kubernetes_version
-  node_count           = var.node_count
-  vm_size              = var.vm_size
-  tags                 = var.tags
+  project_name        = var.project_name
+  environment         = var.environment
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  kubernetes_version  = var.kubernetes_version
+  node_count          = var.node_count
+  vm_size             = var.vm_size
+  tags                = var.tags
 }
 
 # --- PostgreSQL ---
@@ -115,13 +115,13 @@ module "aks" {
 module "postgres" {
   source = "./modules/postgres"
 
-  project_name           = var.project_name
-  environment            = var.environment
-  resource_group_name    = azurerm_resource_group.main.name
-  location               = var.location
-  admin_username         = var.postgres_admin_username
-  admin_password         = var.postgres_admin_password
-  tags                   = var.tags
+  project_name        = var.project_name
+  environment         = var.environment
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  admin_username      = var.postgres_admin_username
+  admin_password      = var.postgres_admin_password
+  tags                = var.tags
 }
 
 # --- Redis Cache ---
@@ -129,11 +129,11 @@ module "postgres" {
 module "redis" {
   source = "./modules/redis"
 
-  project_name      = var.project_name
-  environment       = var.environment
+  project_name        = var.project_name
+  environment         = var.environment
   resource_group_name = azurerm_resource_group.main.name
-  location          = var.location
-  tags              = var.tags
+  location            = var.location
+  tags                = var.tags
 }
 
 # --- Monitoring ---
@@ -141,11 +141,11 @@ module "redis" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  project_name      = var.project_name
-  environment       = var.environment
+  project_name        = var.project_name
+  environment         = var.environment
   resource_group_name = azurerm_resource_group.main.name
-  location          = var.location
-  tags              = var.tags
+  location            = var.location
+  tags                = var.tags
 }
 
 # --- Outputs ---

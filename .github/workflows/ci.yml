@@ -212,13 +212,39 @@ jobs:
       - name: Check the repository is self-contained
         run: python .github/scripts/check_selfcontained.py
 
+  # ------------------------------------------------------------ terraform
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      # `fmt -check` catches formatting drift. `init -backend=false` resolves the
+      # provider schema without contacting the Azure state backend, so this job
+      # needs no cloud credentials. `validate` then type-checks every resource
+      # against that schema, which is what catches a wrong argument name in a
+      # module that nothing would notice until apply.
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: terraform init and validate
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+        working-directory: terraform
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, shell, yaml, docs]
+    needs: [test, shell, yaml, docs, terraform]
     if: always()
     steps:
       - name: Report
@@ -226,10 +252,12 @@ jobs:
           echo "test:  ${{ needs.test.result }}"
           echo "shell: ${{ needs.shell.result }}"
           echo "yaml:  ${{ needs.yaml.result }}"
+          echo "terraform: ${{ needs.terraform.result }}"
           echo "docs:  ${{ needs.docs.result }}"
           if [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.shell.result }}" != "success" ] ||
              [ "${{ needs.yaml.result }}" != "success" ] ||
+             [ "${{ needs.terraform.result }}" != "success" ] ||
              [ "${{ needs.docs.result }}" != "success" ]; then
             echo "One or more jobs failed."
             exit 1

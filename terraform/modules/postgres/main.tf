@@ -43,25 +43,18 @@ resource "azurerm_postgresql_flexible_server" "main" {
   location            = var.location
   version             = "15"
 
-  administrator_login          = var.admin_username
-  administrator_login_password = var.admin_password
+  administrator_login    = var.admin_username
+  administrator_password = var.admin_password
 
-  sku_name   = "B_Gen5_2"
-  storage_mb = 20480
+  sku_name   = "B_Standard_B1ms"
+  storage_mb = 32768
 
-  backup {
-    backup_retention_days = 7
-    backup_interval_hours = 24
-  }
-
-  high_availability {
-    mode = "Disabled"
-  }
+  backup_retention_days = 7
 
   maintenance_window {
-    day_of_week = 0
-    start_hour  = 2
-    start_minute  = 0
+    day_of_week  = 0
+    start_hour   = 2
+    start_minute = 0
   }
 
   tags = var.tags
@@ -69,11 +62,10 @@ resource "azurerm_postgresql_flexible_server" "main" {
 
 # PostgreSQL Database
 resource "azurerm_postgresql_flexible_server_database" "main" {
-  name                = "${var.project_name}_${var.environment}"
-  resource_group_name = var.resource_group_name
-  server_name         = azurerm_postgresql_flexible_server.main.name
-  charset             = "UTF8"
-  collation           = "en_US.UTF8"
+  name      = "${var.project_name}_${var.environment}"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  charset   = "UTF8"
+  collation = "en_US.utf8"
 }
 
 # Firewall rule for AKS

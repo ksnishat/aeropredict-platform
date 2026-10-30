@@ -1,0 +1,58 @@
+# ============================================================
+# Slim serving image for AeroPredict.
+#
+# The full Dockerfile installs requirements.txt, which pulls the CUDA build of
+# torch (3.2 GB of nvidia wheels), triton (895 MB) and pyspark (347 MB). The
+# resulting image is ~11.8 GB, which does not fit a free or cheap cloud tier.
+#
+# This image installs requirements-serve.txt instead: CPU-only torch, no
+# pyspark, no Airflow. The model is TorchScript and runs on CPU, so nothing is
+# lost at serving time. Training and orchestration stay in the full image.
+# ============================================================
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-serve.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements-serve.txt
+
+# ---- Runtime ----
+FROM python:3.10-slim AS runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Only what the API needs at runtime. The .dockerignore already excludes the
+# rest, but copying explicitly keeps the image honest about its contents.
+COPY src/ ./src/
+COPY models/ ./models/
+
+ENV PATH=/usr/local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    MODEL_PATH=models/lstm_best.pt \
+    DRIFT_BASELINE_PATH=models/drift_baseline.json
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]

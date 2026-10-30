@@ -50,15 +50,15 @@ resource "azurerm_kubernetes_cluster" "main" {
   node_resource_group = "${var.project_name}-${var.environment}-nodes-rg"
 
   default_node_pool {
-    name                = "default"
-    node_count          = var.node_count
-    vm_size             = var.vm_size
-    type                = "VirtualMachineScaleSets"
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = 5
-    max_pods            = 110
-    os_disk_size_gb     = 100
+    name                 = "default"
+    node_count           = var.node_count
+    vm_size              = var.vm_size
+    type                 = "VirtualMachineScaleSets"
+    auto_scaling_enabled = true
+    min_count            = 1
+    max_count            = 5
+    max_pods             = 110
+    os_disk_size_gb      = 100
   }
 
   identity {
@@ -69,7 +69,6 @@ resource "azurerm_kubernetes_cluster" "main" {
     network_plugin = "azure"
     service_cidr   = "10.100.0.0/16"
     dns_service_ip = "10.100.0.10"
-    docker_bridge_cidr = "172.17.0.1/16"
   }
 
   tags = var.tags

@@ -1,0 +1,61 @@
+# ============================================================
+# GPU serving image for AeroPredict.
+#
+# Built on python:3.10-slim rather than nvidia/cuda:*-runtime. The CUDA base
+# image is ~3 GB on its own and pushed this image to 15.4 GB. Installing the
+# CUDA build of torch from PyPI instead pulls the same CUDA libraries as
+# nvidia-* wheels, which are shared and cached, and keeps the image smaller.
+#
+# What is deliberately NOT installed here: pyspark, Airflow, bentoml, streamlit.
+# Those are training and orchestration dependencies and account for most of the
+# 11.8 GB in the full image. Serving needs torch and the API stack only.
+#
+# Requires the NVIDIA container runtime on the host:
+#   docker run --gpus all ...
+# ============================================================
+
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-gpu.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements-gpu.txt
+
+# ---- Runtime ----
+FROM python:3.10-slim AS runtime
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
+
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+COPY src/ ./src/
+COPY models/ ./models/
+
+ENV PATH=/usr/local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    MODEL_PATH=models/lstm_best.pt \
+    DRIFT_BASELINE_PATH=models/drift_baseline.json \
+    AERO_DEVICE=cuda
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]

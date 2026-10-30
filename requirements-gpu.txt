@@ -1,0 +1,35 @@
+# GPU serving dependencies for the AeroPredict API.
+#
+# Same as requirements-serve.txt but with the CUDA build of torch, so the model
+# runs on an NVIDIA GPU. Use this on a GPU host (Hugging Face Spaces ZeroGPU,
+# Azure NC-series, or a local machine with the NVIDIA container runtime).
+#
+# The image is ~6 GB larger than the CPU variant because of the nvidia wheels.
+# That is the cost of GPU inference; the CPU variant stays available for hosts
+# without a GPU.
+
+# --- Data & ML (CUDA) ---
+numpy
+pandas
+scikit-learn
+torch
+joblib
+
+# --- API & serving ---
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+prometheus-client
+requests
+
+# --- RAG (optional at runtime; the API degrades gracefully without it) ---
+langchain-core
+langchain-community
+langchain-chroma
+chromadb
+sentence-transformers
+pypdf
+
+# --- Logging ---
+python-json-logger
