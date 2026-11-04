@@ -197,7 +197,7 @@ propcache==0.5.4
 protobuf==7.36.2
 psutil==7.2.2
 psycopg2-binary==2.9.13
-py4j==0.10.9.7
+py4j==0.10.9.9
 pyarrow==25.0.1
 pyasn1==0.6.5
 pyasn1_modules==0.4.2
@@ -216,7 +216,7 @@ pyparsing==3.3.3
 pypdf==6.21.4
 PyPika==0.51.1
 pyproject_hooks==1.3.3
-pyspark==3.5.0
+pyspark==3.5.9
 pyspark-client==4.2.1
 pytest==9.2.0
 pytest-cov==7.1.0
