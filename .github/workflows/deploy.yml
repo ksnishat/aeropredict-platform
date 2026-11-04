@@ -61,24 +61,24 @@ jobs:
       # step on `if: env.DEPLOY_K8S`, but step-level `env:` is not available to
       # that step's own `if:` expression, so the condition never evaluated true.
       - name: Install kubectl
-        if: env.KUBE_CONFIG_DATA != ''
+        if: ${{ env.KUBE_CONFIG_DATA != '' }}
         uses: azure/setup-kubectl@v4
         with:
           version: v1.29.0
 
       - name: Write kubeconfig
-        if: env.KUBE_CONFIG_DATA != ''
+        if: ${{ env.KUBE_CONFIG_DATA != '' }}
         run: |
           mkdir -p "$HOME/.kube"
           echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
       - name: Deploy to Kubernetes
-        if: env.KUBE_CONFIG_DATA != ''
+        if: ${{ env.KUBE_CONFIG_DATA != '' }}
         run: |
           echo "Deploying aeropredict-api..."
           kubectl set image deployment/aeropredict-api \
-            aeropredict-api=ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
+            aeropredict-api=ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
 
       - name: Update deployment status
         run: |
