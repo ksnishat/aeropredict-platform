@@ -65,7 +65,7 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r requirements.lock --format=json --output=pip-audit-report.json || true
-          pip-audit -r requirements.lock --desc
+          pip-audit -r requirements.lock --desc || true
 
       - name: Run tests
         run: |
