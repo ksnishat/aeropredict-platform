@@ -59,7 +59,8 @@ serving/
 .dvc/plots/
 
 # --- Docker ---
-.dockerignore
+# .dockerignore is intentionally tracked: it must ship with the repo so
+# builds on CI and other machines get the same trimmed build context.
 
 # --- ZenML ---
 .zen/

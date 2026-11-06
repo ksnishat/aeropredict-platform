@@ -1,0 +1,62 @@
+# Keep the build context small and the image reproducible.
+# Without this file `COPY . .` pulls in local state that must never ship:
+# experiment databases, run artifacts, caches and the git history.
+
+# --- Version control ---
+.git
+.gitignore
+.github
+
+# --- Python caches ---
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.ipynb_checkpoints
+
+# --- Virtual environments ---
+.venv
+venv
+env
+
+# --- Experiment tracking and local state ---
+mlruns
+mlruns_v3
+mlflow.db
+*.db
+*.sqlite
+.stack-logs
+logs
+*.log
+
+# --- Local object storage ---
+.minio-data
+minio-data
+
+# --- Test and coverage output ---
+.coverage
+coverage.xml
+htmlcov
+.pytest_cache
+
+# --- Notebooks and docs (not needed at runtime) ---
+docs
+*.md
+!README.md
+
+# --- Local secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Large local datasets (fetched via DVC, not baked into the image) ---
+data/raw
+data/processed
+*.zip
+*.tar.gz
+
+# --- Editor state ---
+.vscode
+.idea
