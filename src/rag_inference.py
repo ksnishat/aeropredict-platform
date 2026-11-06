@@ -111,6 +111,17 @@ def _list_ollama_models(base_url: str, timeout: float = 5.0) -> list[str]:
         return []
 
 
+def _normalise_tag(tag: str) -> str:
+    """Expand a bare model name to its explicit ``:latest`` form.
+
+    Ollama always reports tags with an explicit tag component, so a configured
+    ``llama3.2`` never string-matches the pulled ``llama3.2:latest`` even though
+    they are the same model. Normalising both sides before comparing keeps a
+    bare name from being reported as missing.
+    """
+    return tag if ":" in tag else f"{tag}:latest"
+
+
 def resolve_llm_model(
     requested: str | None, base_url: str, available: list[str] | None = None
 ) -> tuple[str, str | None]:
@@ -140,6 +151,13 @@ def resolve_llm_model(
 
     if wanted in tags:
         return wanted, None
+
+    # A bare name and its explicit ":latest" form are the same model, so match
+    # on the normalised tag before treating the request as missing.
+    wanted_norm = _normalise_tag(wanted)
+    for tag in tags:
+        if _normalise_tag(tag) == wanted_norm:
+            return tag, None
 
     # Prefer a same-family tag (llama3.2 -> llama3.2:1b) before falling back to
     # an arbitrary model, so a quantised variant of the intended model wins over

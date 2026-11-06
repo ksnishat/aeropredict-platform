@@ -171,6 +171,31 @@ class TestOllamaModelResolution:
         for tag in self.TAGS:
             assert tag in warning, f"{tag} missing from the warning"
 
+    def test_bare_name_matches_its_latest_tag(self):
+        """Ollama reports ``llama3.2:latest``; a configured ``llama3.2`` is the
+        same model and must not be reported as missing."""
+        from src.rag_inference import resolve_llm_model
+
+        model, warning = resolve_llm_model("llama3.2", "http://x", ["llama3.2:latest"])
+        assert model == "llama3.2:latest"
+        assert warning is None
+
+    def test_explicit_latest_matches_a_bare_available_tag(self):
+        """The reverse direction must also resolve rather than warn."""
+        from src.rag_inference import resolve_llm_model
+
+        model, warning = resolve_llm_model("llama3.2:latest", "http://x", ["llama3.2"])
+        assert model == "llama3.2"
+        assert warning is None
+
+    def test_bare_name_does_not_match_a_different_tag(self):
+        """Normalisation must not make every tag look like a match."""
+        from src.rag_inference import resolve_llm_model
+
+        model, warning = resolve_llm_model("llama3.2", "http://x", ["llama3.2:1b"])
+        assert model == "llama3.2:1b"
+        assert warning is not None
+
     def test_health_reports_the_resolved_model(self, monkeypatch):
         from fastapi.testclient import TestClient
 
