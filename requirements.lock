@@ -115,9 +115,9 @@ itsdangerous==2.2.0
 Jinja2==3.1.6
 jmespath==1.1.0
 joblib==1.6.0
-jsonpatch==1.43
+jsonpatch==1.44
 jsonpath-ng==1.16.0
-jsonpointer==3.9
+jsonpointer==3.10
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 kantoku==0.18.3
