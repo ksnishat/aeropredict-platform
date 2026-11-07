@@ -32,7 +32,7 @@ from pydantic import BaseModel
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from auth import auth_enabled, require_api_key
 from data_preprocessing import preprocess_for_inference
-from ratelimit import DRIFT_LIMIT, PREDICT_LIMIT, READ_LIMIT, limiter
+from ratelimit import ADMIN_LIMIT, DRIFT_LIMIT, PREDICT_LIMIT, READ_LIMIT, limiter
 from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload
 from versioning import install as install_versioning
@@ -599,7 +599,8 @@ def metrics():
 
 
 @app.post("/admin/reload-model", dependencies=[Depends(require_api_key)])
-def reload_model():
+@limiter.limit(ADMIN_LIMIT)
+def reload_model(request: Request):
     """Re-read the model checkpoint from disk without restarting the API.
 
     The retraining DAG writes a new checkpoint to the shared model volume, then

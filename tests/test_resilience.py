@@ -178,3 +178,37 @@ class TestDriftRouteIsRateLimited:
             for _ in range(40)
         ]
         assert 429 in codes, f"drift was never rate limited: {set(codes)}"
+
+
+class TestAdminRouteIsRateLimited:
+    """A model reload is authenticated but must also be budgeted.
+
+    Reloading re-reads weights from disk and swaps the live model. It is the
+    most expensive thing an operator can trigger, and it was unlimited in all
+    four projects: only require_api_key guarded it.
+    """
+
+    def test_admin_route_is_wrapped_by_the_limiter(self):
+        from src import api
+
+        route = next(
+            r for r in api.app.routes if getattr(r, "path", "") == "/admin/reload-model"
+        )
+        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(
+            route.endpoint
+        ).lower()
+        assert wrapped, "the /admin/reload-model endpoint is not rate limited"
+
+    def test_admin_returns_429_after_the_limit(self):
+        from fastapi.testclient import TestClient
+
+        from src import api
+
+        client = TestClient(api.app)
+        codes = [
+            client.post(
+                "/admin/reload-model", headers={"X-API-Key": "admin-limit-probe"}
+            ).status_code
+            for _ in range(12)
+        ]
+        assert 429 in codes, f"admin reload was never rate limited: {set(codes)}"

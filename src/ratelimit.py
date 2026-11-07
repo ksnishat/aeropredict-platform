@@ -73,6 +73,10 @@ _UNIT_SECONDS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
 
 PREDICT_LIMIT = os.getenv("RATE_LIMIT_PREDICT", "60/minute")
 DRIFT_LIMIT = os.getenv("RATE_LIMIT_DRIFT", "30/minute")
+# A model reload re-reads weights from disk and swaps the live model.
+# It is authenticated, but it is also the most expensive thing an
+# operator can trigger, so it gets its own tight budget.
+ADMIN_LIMIT = os.getenv("RATE_LIMIT_ADMIN", "5/minute")
 REPORT_LIMIT = os.getenv("RATE_LIMIT_REPORT", "30/minute")
 READ_LIMIT = os.getenv("RATE_LIMIT_READ", "120/minute")
 
