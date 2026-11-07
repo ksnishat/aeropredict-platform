@@ -43,31 +43,27 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          uv pip install ruff
-          ruff check . --output-format=github
+          uv run --frozen ruff check . --output-format=github
 
       - name: Type check with mypy
         run: |
-          uv pip install mypy
-          mypy src/ --ignore-missing-imports --disallow-untyped-defs --warn-return-any || true
+          uv run --frozen mypy src/ --ignore-missing-imports --disallow-untyped-defs --warn-return-any || true
 
       - name: Security scan with bandit
         run: |
-          uv pip install bandit
-          bandit -r src/ -f json -o bandit-report.json || true
-          bandit -r src/ --format txt --severity-level medium || true
+          uv run --frozen --with bandit bandit -r src/ -f json -o bandit-report.json || true
+          uv run --frozen --with bandit bandit -r src/ --format txt --severity-level medium || true
 
       - name: Dependency vulnerability scan with pip-audit
         run: |
-          uv pip install pip-audit
           # Audit the resolved set from uv.lock, which is what actually ships.
           uv export --frozen --no-emit-project --format requirements-txt -o /tmp/audit.txt
-          pip-audit -r /tmp/audit.txt --format=json --output=pip-audit-report.json || true
-          pip-audit -r /tmp/audit.txt --desc || true
+          uv run --frozen --with pip-audit pip-audit -r /tmp/audit.txt --format=json --output=pip-audit-report.json || true
+          uv run --frozen --with pip-audit pip-audit -r /tmp/audit.txt --desc || true
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=5 --disable-warnings \
+          uv run --frozen python -m pytest tests/ -v --tb=short -m "not integration" --maxfail=5 --disable-warnings \
             --cov=src --cov-report=xml --cov-report=term-missing \
             --cov-fail-under=60
 
@@ -160,14 +156,14 @@ jobs:
           python-version: "3.10"
 
       - name: Install tooling
-        run: uv pip install pyyaml
+        run: uv sync --frozen --with pyyaml
 
       - name: Parse every YAML file
         run: |
           # helm-chart/templates/ is excluded: those files contain Go template
           # actions and are not valid YAML until Helm renders them. The Helm
           # step below validates them properly.
-          python - <<'PY'
+          uv run --frozen python - <<'PY'
           import subprocess, sys, yaml
 
           files = subprocess.run(
@@ -192,7 +188,7 @@ jobs:
 
       - name: Parse every JSON file
         run: |
-          python - <<'PY'
+          uv run --frozen python - <<'PY'
           import json, subprocess, sys
 
           files = subprocess.run(
