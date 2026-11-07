@@ -143,3 +143,38 @@ class TestRateLimitKeying:
     def test_disabled_switch_respected(self, monkeypatch):
         monkeypatch.setenv("RATE_LIMIT_ENABLED", "0")
         assert ratelimit._enabled() is False
+
+
+class TestDriftRouteIsRateLimited:
+    """The drift endpoint must actually be limited, not just documented as such.
+
+    DRIFT_LIMIT was defined and described in the module docstring, but no route
+    used it: /drift was reachable without a limit in all four projects. A burst
+    of 40 requests against a 30/minute limit returned 40x200.
+
+    The cause was decorator order. ``@limiter.limit`` must sit *below* the route
+    decorator so it wraps the handler before FastAPI registers it; above it, the
+    limiter wraps a function that FastAPI never sees.
+    """
+
+    def test_drift_route_is_wrapped_by_the_limiter(self):
+        """Structural check: the registered endpoint must be slowapi-wrapped."""
+        from src import api
+
+        route = next(r for r in api.app.routes if getattr(r, "path", "") == "/drift")
+        wrapped = hasattr(route.endpoint, "__wrapped__") or "limit" in repr(
+            route.endpoint
+        ).lower()
+        assert wrapped, "the /drift endpoint is not wrapped by the rate limiter"
+
+    def test_drift_returns_429_after_the_limit(self):
+        from fastapi.testclient import TestClient
+
+        from src import api
+
+        client = TestClient(api.app)
+        codes = [
+            client.get("/drift", headers={"X-API-Key": "drift-limit-probe"}).status_code
+            for _ in range(40)
+        ]
+        assert 429 in codes, f"drift was never rate limited: {set(codes)}"

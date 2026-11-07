@@ -7,9 +7,9 @@ import tempfile
 import pytest
 
 # Optional dependencies the suite exercises. They are declared in
-# requirements.txt and therefore pinned in requirements.lock, so CI has them.
-# A developer env created before the lock may not, and without this guard the
-# failure reads as 27 broken tests instead of "three packages are missing".
+# pyproject.toml and therefore present in uv.lock, so CI has them. A developer
+# env created before the lock may not, and without this guard the failure reads
+# as 27 broken tests instead of "three packages are missing".
 _OPTIONAL = {
     "bentoml": "tests/test_rul_service.py",
     "pythonjsonlogger": "tests/test_pipeline_scripts.py",

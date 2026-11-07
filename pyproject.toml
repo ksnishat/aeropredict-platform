@@ -45,7 +45,6 @@ dependencies = [
     "torch",
     "pytorch-lightning",
     "matplotlib",
-    "plotly",
     "flask",
     "flask-admin",
     "langchain-core>=0.2.0",

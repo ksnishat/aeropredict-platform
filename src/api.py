@@ -32,7 +32,7 @@ from pydantic import BaseModel
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from auth import auth_enabled, require_api_key
 from data_preprocessing import preprocess_for_inference
-from ratelimit import PREDICT_LIMIT, READ_LIMIT, limiter
+from ratelimit import DRIFT_LIMIT, PREDICT_LIMIT, READ_LIMIT, limiter
 from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload
 from versioning import install as install_versioning
@@ -551,7 +551,8 @@ def publish_drift_metrics(drift: dict) -> None:
 
 
 @app.get("/drift", dependencies=[Depends(require_api_key)])
-def drift_report():
+@limiter.limit(DRIFT_LIMIT)
+def drift_report(request: Request):
     """Per-feature PSI against the training baseline.
 
     Unlike /predict this can be polled on its own, so a dashboard or alert rule
