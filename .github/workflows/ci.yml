@@ -156,14 +156,14 @@ jobs:
           python-version: "3.10"
 
       - name: Install tooling
-        run: uv sync --frozen --with pyyaml
+        run: uv sync --frozen
 
       - name: Parse every YAML file
         run: |
           # helm-chart/templates/ is excluded: those files contain Go template
           # actions and are not valid YAML until Helm renders them. The Helm
           # step below validates them properly.
-          uv run --frozen python - <<'PY'
+          uv run --frozen --with pyyaml python - <<'PY'
           import subprocess, sys, yaml
 
           files = subprocess.run(
