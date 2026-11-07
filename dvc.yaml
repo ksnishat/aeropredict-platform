@@ -51,37 +51,37 @@ stages:
     desc: Create engineered features and health index (gold layer)
 
   # === MODEL TRAINING ===
+  # The script is train_model_dvc.py, not train_model.py: the latter never
+  # existed in src/scripts, so `dvc repro` failed at this stage with
+  # "No such file or directory". The script logs to MLflow rather than writing
+  # a checkpoint, so the stage declares no outs -- claiming models/rul_model.pth
+  # here would make DVC fail with "output not produced".
   train_model:
-    cmd: python src/scripts/train_model.py
+    cmd: python src/scripts/train_model_dvc.py --gold-path data/gold
     deps:
-      - src/scripts/train_model.py
+      - src/scripts/train_model_dvc.py
       - data/gold/sensor_features.dvc
-    outs:
-      - models/rul_model.pth
-      - models/scaler.pkl
-    metrics:
-      - metrics/model_metrics.json:
-          cache: false
     params:
       - training.epochs
       - training.learning_rate
       - training.batch_size
-    desc: Train LSTM model on engineered features
+    desc: Train LSTM model on engineered features (logs to MLflow)
 
   # === MODEL EVALUATION ===
+  # evaluate_model.py lives in src/, not src/scripts/. It writes PNG plots to
+  # plots/ and logs metrics to MLflow; it does not write metrics/evaluation.json.
   evaluate_model:
-    cmd: python src/scripts/evaluate_model.py
+    cmd: python src/evaluate_model.py
     deps:
-      - src/scripts/evaluate_model.py
-      - models/rul_model.pth
+      - src/evaluate_model.py
+      - models/lstm_best.pt
       - data/gold/sensor_features.dvc
-    metrics:
-      - metrics/evaluation.json:
-          cache: false
     plots:
       - plots/training_curve.png:
           cache: false
       - plots/prediction_scatter.png:
+          cache: false
+      - plots/rul_distribution.png:
           cache: false
     desc: Evaluate model performance and generate plots
 
