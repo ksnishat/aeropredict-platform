@@ -286,12 +286,11 @@ the data is absent.
 ### 2. Install dependencies
 
 ```bash
-conda create -n aeropredict-env python=3.10 -y
-conda activate aeropredict-env
-pip install -r requirements.txt
-pip install torch --index-url https://download.pytorch.org/whl/cu121   # cpu build: use /cpu
-pip install mlflow pandas numpy scikit-learn pydantic pypdf requests \
-            pytest pytest-cov httpx pytorch-lightning bentoml
+# uv reads pyproject.toml and installs the exact set pinned in uv.lock.
+# The CPU torch index is declared in [tool.uv] so no extra flags are needed.
+pip install uv
+uv sync --extra dev
+source .venv/bin/activate
 ```
 
 ### 3. Train the model

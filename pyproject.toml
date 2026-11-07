@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "aeropredict-platform"
@@ -52,6 +52,12 @@ dependencies = [
     "python-json-logger",
     "packaging",
     "pysqlite3-binary; python_version < '3.9'",
+    "apache-airflow-providers-apache-spark",
+    "apache-airflow-providers-amazon",
+    "python-multipart",
+    "httpx",
+    "slowapi==0.1.10",
+    "tenacity>=9.0,<10.0",
 ]
 
 [project.optional-dependencies]
@@ -110,3 +116,25 @@ addopts = "-v --tb=short"
 markers = [
     "integration: requires the live docker stack (set LIVE_STACK=1)",
 ]
+
+# --- uv -------------------------------------------------------------------
+# uv is the resolver and installer for this project. `uv sync` installs the
+# locked set; `uv lock` regenerates it. The CPU wheel index is declared here
+# because PEP 508 has no syntax for an index URL, which is why the serving
+# image previously needed a separate requirements-serve.txt.
+[tool.uv]
+# The default PyPI index plus the CPU-only torch wheels. `unsafe-best-match`
+# lets uv consider both indexes for the same package, which is required for
+# torch: PyPI carries the CUDA build, the pytorch index carries +cpu.
+index-strategy = "unsafe-best-match"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = false
+
+[tool.uv.sources]
+# Pin torch and torchvision to the CPU index so a serving install never pulls
+# the 3.2 GB of nvidia wheels that the default PyPI build drags in.
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]

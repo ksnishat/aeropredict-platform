@@ -27,45 +27,43 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache pip
-        uses: actions/cache@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ runner.os }}-pip-
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
+      # --locked fails if uv.lock is out of date with pyproject.toml, so a
+      # dependency change that was not re-locked cannot reach main. This is the
+      # reproducibility gate that the old requirements.lock job was trying to
+      # be: uv.lock is the actual install source, so drift here is real.
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          # Install from requirements.txt to test actual dependency resolution
-          # across Python versions. The lock file is for production reproducibility.
-          pip install -r requirements.txt
-          if [ -f "requirements-dev.txt" ]; then pip install -r requirements-dev.txt; fi
-          pip install pytest pytest-cov
+          uv sync --locked --extra dev --python ${{ matrix.python-version }}
 
       - name: Lint with ruff
         run: |
-          pip install ruff
+          uv pip install ruff
           ruff check . --output-format=github
 
       - name: Type check with mypy
         run: |
-          pip install mypy
+          uv pip install mypy
           mypy src/ --ignore-missing-imports --disallow-untyped-defs --warn-return-any || true
 
       - name: Security scan with bandit
         run: |
-          pip install bandit
+          uv pip install bandit
           bandit -r src/ -f json -o bandit-report.json || true
           bandit -r src/ --format txt --severity-level medium || true
 
       - name: Dependency vulnerability scan with pip-audit
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.lock --format=json --output=pip-audit-report.json || true
-          pip-audit -r requirements.lock --desc || true
+          uv pip install pip-audit
+          # Audit the resolved set from uv.lock, which is what actually ships.
+          uv export --frozen --no-emit-project --format requirements-txt -o /tmp/audit.txt
+          pip-audit -r /tmp/audit.txt --format=json --output=pip-audit-report.json || true
+          pip-audit -r /tmp/audit.txt --desc || true
 
       - name: Run tests
         run: |
@@ -162,7 +160,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install tooling
-        run: pip install pyyaml
+        run: uv pip install pyyaml
 
       - name: Parse every YAML file
         run: |
@@ -326,35 +324,18 @@ jobs:
   lockfile:
     name: Lock file in sync
     runs-on: ubuntu-latest
-    # Advisory, not a gate. requirements.lock is not installed by CI, the
-    # Dockerfiles or the deploy path -- only pip-audit reads it -- so a drifted
-    # lock has no effect on what actually ships. It drifts on every upstream
-    # release because requirements.txt is unpinned, which made this job fail
-    # for reasons no commit could fix. It still runs and still reports the
-    # diff, so the signal is kept; it just no longer blocks a merge.
-    # Re-enable as a gate once requirements.txt is pinned to exact versions.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
-      # A lock file that has drifted from requirements.txt is worse than no
-      # lock file: CI installs the stale pins and passes, while a fresh
-      # `pip install -r requirements.txt` gets different versions. This job
-      # regenerates the lock and reports any difference.
-      - name: Regenerate and compare
+      # uv.lock is the actual install source (CI, Docker and local all use
+      # `uv sync`), so drift here is a real reproducibility failure rather than
+      # a cosmetic one. --check exits non-zero when pyproject.toml and uv.lock
+      # disagree, which means a dependency change was committed without
+      # re-locking.
+      - name: Verify uv.lock matches pyproject.toml
         run: |
-          python -m pip install --upgrade pip
-          cp requirements.lock /tmp/committed.lock
-          python tools/gen_lock.py requirements.txt requirements.lock
-          if ! diff -q /tmp/committed.lock requirements.lock; then
-            echo "::warning title=requirements.lock is out of date::Upstream releases moved the pins. Run: python tools/gen_lock.py requirements.txt requirements.lock"
-            echo "requirements.lock is out of date."
-            echo "Run: python tools/gen_lock.py requirements.txt requirements.lock"
-            diff /tmp/committed.lock requirements.lock | head -40
-            exit 1
-          fi
-          echo "requirements.lock matches requirements.txt"
+          uv lock --check --python 3.11
+          echo "uv.lock matches pyproject.toml"

@@ -16,9 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install to /install
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# Install from the uv lock so the image matches CI and local exactly.
+# --no-install-project skips building this package itself; the source is copied
+# in the runtime stage, so only the dependencies are needed here.
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir uv \
+    && uv export --frozen --no-emit-project --format requirements-txt -o /tmp/req.txt \
+    && pip install --no-cache-dir --prefix=/install -r /tmp/req.txt
 
 # ---- Stage 2: Runtime ----
 FROM python:3.10-slim AS runtime
