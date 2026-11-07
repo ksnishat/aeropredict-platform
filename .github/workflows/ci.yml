@@ -312,6 +312,65 @@ jobs:
           fi
           echo "All checks passed."
 
+  # ---------------------------------------------------------------- image
+  image:
+    name: Docker image builds and serves
+    runs-on: ubuntu-latest
+    # The deploy workflow only runs on a tag, so a broken Dockerfile could sit
+    # on main indefinitely. This job builds the image and asserts the container
+    # actually answers on /, which is what caught three separate defects:
+    # a CMD pointing at a module that does not exist, pip's --prefix layout
+    # landing packages where Python never looks, and a missing libxcb.so.1.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ci-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container starts and serves
+        run: |
+          docker run -d --name ci-image -p 18000:8000 \
+            -e API_KEY=ci-probe-key ci-image:latest
+          for _ in $(seq 1 45); do
+            if curl -sf -o /dev/null http://127.0.0.1:18000/; then
+              echo "Container answered on /"
+              docker rm -f ci-image >/dev/null 2>&1 || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Container did not answer on / within 90s"
+          docker logs ci-image || true
+          docker rm -f ci-image >/dev/null 2>&1 || true
+          exit 1
+
+      - name: Authentication is enforced
+        run: |
+          docker run -d --name ci-auth -p 18001:8000 \
+            -e API_KEY=ci-probe-key ci-image:latest
+          for _ in $(seq 1 45); do
+            curl -sf -o /dev/null http://127.0.0.1:18001/ && break
+            sleep 2
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:18001/predict)
+          docker rm -f ci-auth >/dev/null 2>&1 || true
+          if [ "$code" != "401" ]; then
+            echo "::error::Expected 401 without an API key, got $code"
+            exit 1
+          fi
+          echo "Unauthenticated /predict correctly rejected with 401"
+
   # ---------------------------------------------------------------- audit
   audit:
     name: Dependency audit

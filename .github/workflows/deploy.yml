@@ -1,25 +1,32 @@
 name: Deploy
 
+# Runs on a version tag, or manually against an existing tag. Manual dispatch
+# exists so a deploy can be retried without re-tagging.
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to deploy (e.g. v1.0.0)"
+        required: true
 
 jobs:
-  deploy:
+  # ------------------------------------------------------------------ build
+  build:
+    name: Build and push image
     runs-on: ubuntu-latest
-    # Pushing to ghcr.io requires packages: write. Without it the build
-    # succeeds and the push is denied with "installation not allowed to
-    # Create organization package".
     permissions:
       contents: read
       packages: write
-    env:
-      # Job-level env, because the `secrets` context is not available in a
-      # step-level `if:` expression.
-      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      image: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -38,11 +45,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          # The Helm chart pulls ghcr.io/ksnishat/aeropredict-platform, so the image must be
+          # pushed there. Pushing to ghcr.io/<owner>/<repo> instead left the
+          # chart pointing at an image that was never published.
+          images: ghcr.io/ksnishat/aeropredict-platform
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -55,32 +66,103 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # The kubeconfig must be written to disk before kubectl runs, and kubectl
-      # must be installed. The previous version passed KUBE_CONFIG_DATA as an
-      # env var only, so kubectl had no cluster to talk to. It also gated the
-      # step on `if: env.DEPLOY_K8S`, but step-level `env:` is not available to
-      # that step's own `if:` expression, so the condition never evaluated true.
+  # ----------------------------------------------------------------- deploy
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build
+    runs-on: ubuntu-latest
+    # Skipped, not failed, when no cluster is configured. A red deploy job on
+    # every tag would train the reader to ignore it.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    environment:
+      name: production
+      url: ${{ vars.DEPLOY_URL }}
+    permissions:
+      contents: read
+    env:
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'default' }}
+      RELEASE: aeropredict
+      CHART: aeropredict
+      COMPONENT: api
+      CONTAINER: api
+      IMAGE: ghcr.io/ksnishat/aeropredict-platform:${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
       - name: Install kubectl
-        if: ${{ env.KUBE_CONFIG_DATA != '' }}
         uses: azure/setup-kubectl@v4
         with:
           version: v1.29.0
 
       - name: Write kubeconfig
-        if: ${{ env.KUBE_CONFIG_DATA != '' }}
         run: |
+          if [ -z "$KUBE_CONFIG_DATA" ]; then
+            echo "::error::DEPLOY_ENABLED is true but KUBE_CONFIG_DATA is empty."
+            exit 1
+          fi
           mkdir -p "$HOME/.kube"
-          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
+          printf '%s' "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Deploy to Kubernetes
-        if: ${{ env.KUBE_CONFIG_DATA != '' }}
-        run: |
-          echo "Deploying aeropredict-api..."
-          kubectl set image deployment/aeropredict-api \
-            aeropredict-api=ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+      - name: Verify cluster reachable
+        run: kubectl version --request-timeout=15s
 
-      - name: Update deployment status
+      # The deployment name is rendered by the chart's fullname helper as
+      # "<release>-<chart>-<suffix>", not the bare "<project>-api" the previous
+      # workflow used. `kubectl set image` against a name that does not exist
+      # fails with NotFound, so the deploy never actually happened.
+      - name: Resolve deployment name
+        id: target
         run: |
-          echo "Deployment complete!"
-          echo "Tag: ${{ steps.meta.outputs.version }}"
+          # Select by component, not just by release. Rossmann renders two
+          # Deployments (api and dashboard) under the same release label, so a
+          # bare instance lookup would pick whichever sorted first and deploy
+          # the API image onto the dashboard.
+          name=$(kubectl get deployment -n "$NAMESPACE" \
+            -l "app=$RELEASE-$CHART,component=$COMPONENT" \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -z "$name" ]; then
+            echo "::error::No deployment with component=$COMPONENT found for release '$RELEASE' in namespace '$NAMESPACE'. Install the chart first: helm upgrade --install $RELEASE ./helm-chart"
+            exit 1
+          fi
+          echo "deployment=$name" >> "$GITHUB_OUTPUT"
+          echo "Resolved deployment: $name"
+
+      - name: Deploy image
+        run: |
+          kubectl set image "deployment/${{ steps.target.outputs.deployment }}" \
+            "$CONTAINER=$IMAGE" -n "$NAMESPACE"
+          kubectl annotate "deployment/${{ steps.target.outputs.deployment }}" \
+            "kubernetes.io/change-cause=deploy $IMAGE" -n "$NAMESPACE" --overwrite
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status "deployment/${{ steps.target.outputs.deployment }}" \
+            -n "$NAMESPACE" --timeout=300s
+
+      - name: Smoke test the deployed service
+        run: |
+          # Port-forward rather than assuming an ingress: the chart's ingress is
+          # optional and may not be enabled in every environment.
+          kubectl port-forward -n "$NAMESPACE" \
+            "deployment/${{ steps.target.outputs.deployment }}" 18000:8000 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:18000/; then
+              echo "Service responded on /"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Deployed service did not respond within 60s"
+          kubectl logs -n "$NAMESPACE" "deployment/${{ steps.target.outputs.deployment }}" --tail=50 || true
+          exit 1
+
+      - name: Roll back on failure
+        if: failure()
+        run: |
+          kubectl rollout undo "deployment/${{ steps.target.outputs.deployment }}" -n "$NAMESPACE" || true
