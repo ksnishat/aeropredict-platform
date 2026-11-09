@@ -43,6 +43,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 🔒 **11-job CI** — Python 3.10 + 3.11 matrix, Bandit, pip-audit with a documented allowlist, Trivy SARIF, mypy, Terraform validate, Docker image build-and-serve, RAG eval
 ⚡ **Non-blocking LLM calls** — the report path runs in a worker thread, so a 50-second generation no longer stalls the event loop
 🐛 **Ollama tag matching** — a bare model name (`llama3.2`) never string-matched the pulled tag (`llama3.2:latest`), so a correctly configured model was reported missing
+🖥️ **Dashboard runs on the host** — the Streamlit UI hardcoded the compose DNS name `http://fastapi:8000`, so every request failed outside a container. `API_URL` is now read from the environment with a localhost default, and `start_all_stacks.sh` launches it on :8501
 
 ## Architecture
 
@@ -521,6 +522,11 @@ kubectl apply -f k8s/
 | MLflow | http://localhost:5000 | — |
 | FastAPI | http://localhost:8000 | — |
 | Prometheus | http://localhost:9090 | — |
+
+> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
+> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
+> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
+> table above are the ones that script uses.
 
 Typical workflow:
 
