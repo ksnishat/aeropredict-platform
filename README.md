@@ -23,7 +23,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ---
 
-**At a glance** — MAE **9.51** cycles on the full FD001 test set · 208 unit tests · 13 CI jobs · LSTM + ChromaDB RAG + local LLM
+**At a glance** — MAE **9.51** cycles on the full FD001 test set · 208 unit tests · 12 CI jobs · LSTM + ChromaDB RAG + local LLM
 
 ### What it does
 
@@ -195,7 +195,7 @@ Setup detail, dataset download, configuration and troubleshooting:
 | MinIO | 9000 | | TLS proxy | 8443 |
 
 
-`start_all_stacks.sh` in the workspace root starts every service for all four projects; `verify_live_stack.sh` checks 32 endpoints.
+Run this project alone with `./run_stack.sh` (API, MLflow, MinIO, Prometheus, Grafana). Dashboard: `streamlit run src/app.py` (port 8501). Airflow and the Postgres feature store run through `docker compose`. The four-project orchestrator used during development is kept in the author's workspace and is not part of this repository.
 
 ### API
 
@@ -228,7 +228,23 @@ systems are *production-shaped*, not production-grade.
 | | |
 |---|---|
 | Unit tests | **208** (8 integration tests run against the live stack) |
-| CI jobs | **13**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, RAG eval, README-count check |
+| CI jobs | **12**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, RAG eval, README-count check |
+
+## Roadmap
+
+1. **Measure the generated report, not only retrieval.** Retrieval is scored
+   (`recall@4 = 1.000`); the LLM's prose is not. Add a grounding check that
+   every number in a report appears in the retrieved context, then an
+   LLM-as-judge faithfulness score once a judge model runs in CI.
+2. **Serve from the lock file.** `Dockerfile.serve` still installs
+   `requirements-serve.txt`, a second source of truth beside `uv.lock`. Generate
+   it from the lock so the image and the tested environment cannot diverge.
+3. **Run the retraining DAG end to end.** The Airflow DAG is written and its
+   tasks are unit-tested, but no scheduled run has been executed in this
+   workspace. Trigger one and link the MLflow run it produces.
+4. **Beat the LSTM.** Replace it with a temporal-convolution or small
+   Transformer encoder, the next step the model's own limitations section names,
+   and keep the same test split and harness so the comparison is like-for-like.
 
 ---
 

@@ -14,7 +14,10 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER="tls_aeropredict"
 
-if [ ! -f "$DIR/server.crt" ]; then
+# Regenerate when either half is missing. The key and certificate are not
+# tracked in git, so a fresh clone has neither; checking only the cert let a
+# cert-without-key state reach nginx and fail.
+if [ ! -f "$DIR/server.crt" ] || [ ! -f "$DIR/server.key" ]; then
   "$DIR/generate_certs.sh" localhost
 fi
 

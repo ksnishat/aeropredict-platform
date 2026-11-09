@@ -14,10 +14,7 @@ covers how to run and debug it.
 | FastAPI | http://localhost:8000 | — |
 | Prometheus | http://localhost:9090 | — |
 
-> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
-> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
-> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
-> table above are the ones that script uses.
+> **Running the stack:** `./run_stack.sh` starts this project's API, MLflow, MinIO, Prometheus and Grafana. Dashboard: `streamlit run src/app.py` (port 8501). Airflow and the feature store run through `docker compose`. The four-project orchestrator is kept in the author's workspace and is not part of this repository.
 
 Typical workflow:
 
@@ -60,26 +57,48 @@ Endpoints are configurable so the code runs outside docker-compose:
 ```plaintext
 aeropredict-platform/
 ├── dags/
-│   └── training_pipeline.py    # Airflow DAG (retrain -> GenAI report)
+├── docs/
+├── helm-chart/
+├── infrastructure/
+├── k8s/
 ├── src/
-│   ├── api.py                  # FastAPI backend (RUL + diagnostics + /metrics)
-│   ├── app.py                  # Streamlit technician dashboard
-│   ├── data_preprocessing.py   # Per-engine sliding windows + scaling
-│   ├── train_model.py          # LSTM training + MLflow logging
-│   ├── rag_inference.py        # ChromaDB RAG + local LLM report generation
-│   ├── config.py               # Pydantic settings
-│   └── utils/logging_config.py # Structured JSON logging
-├── knowledge_base/
-│   └── turbofan_maintenance.txt # RAG source: degradation modes, RUL bands, actions
-├── tests/                      # 208 unit + 8 integration tests
-├── run_stack.sh                # Start API + MLflow + MinIO + Prometheus + Grafana
-├── verify_stack.sh             # 7 live-stack health checks
-├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
-├── data/                       # C-MAPSS datasets and the persisted Chroma index
-├── helm-chart/                 # Helm chart for Kubernetes
-├── k8s/                        # Kubernetes manifests
-├── terraform/                  # Infrastructure as code
-└── docker-compose.yml          # postgres, minio, mlflow, airflow, api, ui, monitoring
+│   ├── flask_admin/
+│   ├── scripts/
+│   ├── services/
+│   ├── utils/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── app.py
+│   ├── auth.py
+│   ├── config.py
+│   ├── data_preprocessing.py
+│   ├── drift.py
+│   ├── evaluate_model.py
+│   ├── rag_eval.py
+│   ├── rag_inference.py
+│   ├── ratelimit.py
+│   ├── retry.py
+│   ├── train_model.py
+│   ├── uploads.py
+│   └── versioning.py
+├── terraform/
+├── tests/
+├── docker-compose.yml
+├── Dockerfile
+├── Dockerfile.gpu
+├── Dockerfile.serve
+├── dvc.yaml
+├── load_test.py
+├── Makefile
+├── params.yaml
+├── provision_dashboards.py
+├── pyproject.toml
+├── README.md
+├── requirements-gpu.txt
+├── requirements-serve.txt
+├── run_stack.sh
+├── uv.lock
+└── verify_stack.sh
 ```
 
 ## RAG Maintenance Assistant
