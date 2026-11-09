@@ -191,7 +191,7 @@ Setup detail, dataset download, configuration and troubleshooting:
 |---|---|---|---|---|
 | FastAPI | 8000 | | Prometheus | 9090 |
 | Streamlit UI | 8501 | | Grafana | 3001 |
-| MLflow | 5001 | | Airflow | 8080 |
+| MLflow | 5001 | | Airflow | 8081 |
 | MinIO | 9000 | | TLS proxy | 8443 |
 
 

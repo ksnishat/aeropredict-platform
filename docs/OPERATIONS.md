@@ -7,7 +7,7 @@ covers how to run and debug it.
 ## Usage
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Airflow | http://localhost:8080 | `airflow / airflow` |
+| Airflow | http://localhost:8081 | `airflow / airflow` |
 | Streamlit UI | http://localhost:8501 | — |
 | Grafana | http://localhost:3000 | `admin / admin` |
 | MLflow | http://localhost:5000 | — |
