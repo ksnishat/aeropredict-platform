@@ -53,10 +53,11 @@ PROSE_CLAIM = re.compile(
 def collect_counts() -> tuple[int, int]:
     """Return (non_integration_passed, integration_total).
 
-    The unit count is the number that actually *passed*, not the number
-    collected: OvoScan collects 173 non-integration tests but skips one, and a
-    README claiming "172 unit tests passing" is correct while "173" would not
-    be. Collection cannot distinguish those, so the suite is run once.
+    The unit count is ``passed + skipped``, not ``passed``. Four AeroPredict
+    tests skip when the C-MAPSS dataset is absent, which it is in CI but not on
+    a developer machine: counting only passes made the README correct locally
+    and wrong in CI, which is exactly the drift this script exists to prevent.
+    ``passed + skipped`` is a property of the code, not of the machine.
 
     The integration count comes from collection, which is enough because those
     tests are deselected in CI and their number is what the README quotes.
@@ -68,11 +69,12 @@ def collect_counts() -> tuple[int, int]:
         ],
         cwd=ROOT, capture_output=True, text=True,
     )
-    m = re.search(r"(\d+)\s+passed", run.stdout)
-    if not m:
+    passed = re.search(r"(\d+)\s+passed", run.stdout)
+    if not passed:
         print(run.stdout[-2000:], file=sys.stderr)
         raise SystemExit("could not parse pytest results; did the suite run?")
-    unit = int(m.group(1))
+    skipped = re.search(r"(\d+)\s+skipped", run.stdout)
+    unit = int(passed.group(1)) + (int(skipped.group(1)) if skipped else 0)
 
     collected = subprocess.run(
         [
@@ -136,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     unit, integration = collect_counts()
-    print(f"pytest: {unit} non-integration passed, {integration} integration collected")
+    print(f"pytest: {unit} non-integration tests (passed + skipped), "
+          f"{integration} integration collected")
 
     readme = ROOT / "README.md"
     if not readme.exists():
