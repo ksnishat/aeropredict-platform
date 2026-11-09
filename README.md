@@ -34,11 +34,15 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ### Recent Improvements (2026)
 🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
-📦 **pyproject.toml** — Modern Python packaging with dependencies, entry points, ruff/mypy config
+📦 **uv + pyproject.toml** — `uv.lock` is the install source; `uv sync --locked` fails if the lock drifts from `pyproject.toml`
 🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
 ⚡ **PyTorch Lightning** — Refactored LSTM training with Lightning for cleaner code, checkpointing, logging
 🚀 **BentoML Serving** — Production model serving with BentoML, batch predictions, health checks
-☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring)
+☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring), `fmt`-clean and `validate`-checked in CI
+📊 **RAG retrieval evaluation** — A labelled question set scores `recall@k`, MRR and `hit@1` against the Chroma index; CI gates on `recall@4 >= 0.8`
+🔒 **11-job CI** — Python 3.10 + 3.11 matrix, Bandit, pip-audit with a documented allowlist, Trivy SARIF, mypy, Terraform validate, Docker image build-and-serve, RAG eval
+⚡ **Non-blocking LLM calls** — the report path runs in a worker thread, so a 50-second generation no longer stalls the event loop
+🐛 **Ollama tag matching** — a bare model name (`llama3.2`) never string-matched the pulled tag (`llama3.2:latest`), so a correctly configured model was reported missing
 
 ## Architecture
 
@@ -47,26 +51,59 @@ The system follows a microservices architecture orchestrated by Docker Compose a
 ```mermaid
 flowchart LR
     CMAPSS["NASA C-MAPSS<br/>sensor trajectories"] --> DAG["Airflow DAG<br/>weekly retrain"]
-    DAG --> LSTM["LSTM<br/>PyTorch"]
+    DAG --> LSTM["LSTM<br/>PyTorch Lightning"]
     LSTM --> MLflow["MLflow<br/>runs + metrics"]
     MLflow --> MinIO["MinIO<br/>artifacts"]
     MLflow --> API["FastAPI<br/>/predict"]
     KB["Maintenance reference<br/>knowledge_base/*.txt"] --> RAG["RAG engine<br/>ChromaDB + LLM"]
     API --> RAG
+    RAG --> EVAL["rag_eval.py<br/>recall@k, MRR"]
+    EVAL --> CI["CI gate<br/>recall@4 >= 0.8"]
     API --> Prom["Prometheus"]
     Prom --> Graf["Grafana"]
+    CI --> IMG["Docker image<br/>build + serve"]
 
     classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:1px,color:#0d47a1
     classDef train fill:#fff3e0,stroke:#e65100,stroke-width:1px,color:#bf360c
     classDef track fill:#f3e5f5,stroke:#6a1b9a,stroke-width:1px,color:#4a148c
     classDef serve fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px,color:#1b5e20
     classDef observe fill:#eceff1,stroke:#37474f,stroke-width:1px,color:#263238
+    classDef gate fill:#fffde7,stroke:#f9a825,stroke-width:1px,color:#f57f17
 
     class CMAPSS,KB data
     class DAG,LSTM train
     class MLflow,MinIO track
     class API,RAG serve
     class Prom,Graf observe
+    class EVAL,CI,IMG gate
+```
+
+### Request path
+
+The LLM call is the slow part — roughly 50 seconds on CPU. It runs in a worker
+thread so it cannot stall the event loop, which is what keeps `/` responsive
+while a report is generating.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as FastAPI
+    participant R as ChromaDB
+    participant L as Ollama
+
+    C->>A: POST /predict (sensor CSV)
+    A->>A: scale + window to (1, 50, 21)
+    A->>A: LSTM forward pass
+    alt generate_report=true
+        A->>R: retrieve(query, k=4)
+        R-->>A: 4 passages + scores
+        A->>L: prompt(context, rul, band)
+        Note over A,L: asyncio.to_thread — event loop stays free
+        L-->>A: report text
+    else LLM unavailable
+        A->>A: template fallback
+    end
+    A-->>C: rul, risk_level, report, source
 ```
 
 ## Professional Feature Table
@@ -347,7 +384,7 @@ curl http://localhost:8000/metrics   # Prometheus metrics
 ## Running Tests
 
 ```bash
-PYTHONPATH=src pytest tests/ -v      # 71 passed, 8 skipped
+uv run --frozen --extra dev python -m pytest tests/ -v   # 208 passed, 8 deselected
 ```
 
 The 8 skipped tests are integration tests that need the live docker stack. They
