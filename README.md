@@ -201,6 +201,21 @@ tracked step is replacing the LSTM with a temporal-convolution or small
 Transformer encoder. This is documented rather than hidden so the metrics above
 are not overstated.
 
+## API endpoints
+
+All endpoints except `/` and `/metrics` require the `X-API-Key` header when auth
+is enabled. Rate limits come from `src/ratelimit.py` and are configurable by
+environment variable.
+
+| Method | Path | Limit | Purpose |
+|--------|------|-------|---------|
+| `GET` | `/` | none | Health probe. Reports `model_loaded`, `rag_available`, `rag_model_warning`, `auth_enabled` |
+| `POST` | `/predict` | 60/min | Upload a C-MAPSS sensor file, get RUL + risk band. `?async_report=true` returns immediately with a `report_id` and generates the report in the background |
+| `GET` | `/reports/{report_id}` | 120/min | Poll a report started with `async_report=true`. Returns `404` for an unknown or evicted id, `pending` until the task finishes |
+| `GET` | `/drift` | 30/min | Population Stability Index between live readings and the training baseline |
+| `POST` | `/admin/reload-model` | 5/min | Reload the TorchScript checkpoint without restarting the process. Disabled unless explicitly enabled |
+| `GET` | `/metrics` | none | Prometheus exposition |
+
 ## Security
 
 | Control | Implementation |
@@ -561,7 +576,7 @@ aeropredict-platform/
 │   └── utils/logging_config.py # Structured JSON logging
 ├── knowledge_base/
 │   └── turbofan_maintenance.txt # RAG source: degradation modes, RUL bands, actions
-├── tests/                      # 71 unit + 8 integration tests
+├── tests/                      # 208 unit + 8 integration tests
 ├── run_stack.sh                # Start API + MLflow + MinIO + Prometheus + Grafana
 ├── verify_stack.sh             # 7 live-stack health checks
 ├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
@@ -636,6 +651,42 @@ KNOWLEDGE_BASE_PATH=/path/to/reference.txt python -m src.rag_inference
 > **Hardware note:** a 4 GB GPU cannot hold a 26B model. Use a small model
 > (1B-3B) for responsive generation, or accept CPU-bound latency with a larger
 > one. The embedding model is small enough to run on CPU if the GPU is busy.
+
+### Measuring retrieval quality
+
+Retrieval that *runs* and retrieval that *finds the right passage* are different
+claims, and only the second one is testable. `src/rag_eval.py` scores the
+retriever against a labelled set of 10 questions. Each case names the section
+that should be retrieved and evidence tokens that must appear in the retrieved
+text — tokens chosen so a passage from the wrong section cannot satisfy them by
+accident.
+
+```bash
+uv run --frozen python src/rag_eval.py                  # report and gate
+uv run --frozen python src/rag_eval.py --json           # machine-readable
+uv run --frozen python src/rag_eval.py --min-recall 0.9  # stricter gate
+```
+
+Current result: `recall@4 = 1.000`, MRR 0.900, `hit@1` 0.800 across 10 cases.
+
+Retrieval metrics need only the embedding model and the index, so they run
+offline and deterministically and are gated in CI (`recall@4 >= 0.8`).
+Generation metrics are deliberately *not* gated: they need an LLM, a CI runner
+has none, and a faithfulness score that silently reports 0.0 when the model is
+absent is worse than no score.
+
+Two things the first run surfaced:
+
+- **Chunk 3 of 13 merges sections 3.3 and 3.4**, so a question about fan
+  efficiency loss retrieves a passage that also describes fan *flow* loss.
+  Section-aware chunking was tried as a fix and made recall **worse**
+  (1.000 → 0.900) by producing smaller chunks and losing surrounding context,
+  so it was reverted. The merged section is reported as a ranking weakness
+  rather than traded for recall.
+- **The metric itself had a bug.** The first version checked the wrong-section
+  tokens across all k passages, which flags a neighbouring section that is
+  harmless because the generator sees both. Only the top-ranked passage is
+  checked now.
 
 ## Troubleshooting
 

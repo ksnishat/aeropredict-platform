@@ -31,12 +31,10 @@ STALE = [
     (r"\b53\.70\b",
      "AeroPredict MAE 53.70 is the pre-fix value. The model now scores 9.51. "
      "It is fine to mention 53.70 as the 'before' number, but not as current."),
-    (r"\b109 unit\b",
-     "AeroPredict has 138 unit tests, not 109."),
-    (r"\b52 unit\b",
-     "InfraLens has 75 unit tests, not 52."),
-    (r"\b62 unit\b",
-     "OvoScan has 86 unit tests, not 62."),
+    # Unit-test counts are no longer listed here: they drifted repeatedly and a
+    # blocklist cannot keep up with a number that changes whenever a test is
+    # added. check_readme_counts.py now derives the real count from pytest and
+    # fails when the README disagrees.
     (r"\bproduction-grade\b",
      "The systems are production-shaped, not production-grade. Auth, TLS, "
      "upload limits and self-healing are in place; RBAC, a secret manager, "
@@ -53,9 +51,6 @@ EXEMPT_PHRASES = [
     "verified against Postgres",
     "came from a random",
     "not 844,392",
-    "not 109",
-    "not 52",
-    "not 62",
     "not production-grade",
     "production-shaped, not production-grade",
     "originally predicted",
@@ -75,9 +70,6 @@ REPLACEMENTS = {
     "869.51": ["876.27"],
     "1295.21": ["1284.26"],
     "844,392": ["844,338"],
-    "109 unit": ["138"],
-    "52 unit": ["75"],
-    "62 unit": ["86"],
 }
 
 

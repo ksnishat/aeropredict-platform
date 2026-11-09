@@ -318,13 +318,37 @@ jobs:
       - name: Evaluate retrieval
         run: uv run --frozen python src/rag_eval.py --min-recall 0.8
 
+  # ------------------------------------------------------------ readme-counts
+  # The READMEs quoted test counts that had drifted by 3-6x without anything
+  # noticing, because check_docs.py can only catch values already known to be
+  # wrong. This job derives the truth instead: it runs the suite, counts what
+  # passed, and fails when the README disagrees. The counts cannot go stale
+  # without the build going red.
+  readme-counts:
+    name: README counts match the suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --python "3.11"
+
+      - name: Verify README test counts
+        run: uv run --frozen python .github/scripts/check_readme_counts.py
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval]
+    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts]
     if: always()
     steps:
       - name: Report
@@ -335,6 +359,7 @@ jobs:
           echo "yaml:      ${{ needs.yaml.result }}"
           echo "terraform: ${{ needs.terraform.result }}"
           echo "docs:      ${{ needs.docs.result }}"
+          echo "readme:    ${{ needs.readme-counts.result }}"
           echo "rag-eval:  ${{ needs.rag-eval.result }}"
           if [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.security.result }}" != "success" ] ||
@@ -342,7 +367,8 @@ jobs:
              [ "${{ needs.yaml.result }}" != "success" ] ||
              [ "${{ needs.terraform.result }}" != "success" ] ||
              [ "${{ needs.docs.result }}" != "success" ] ||
-             [ "${{ needs.rag-eval.result }}" != "success" ]; then
+             [ "${{ needs.rag-eval.result }}" != "success" ] ||
+             [ "${{ needs.readme-counts.result }}" != "success" ]; then
             echo "One or more jobs failed."
             exit 1
           fi
