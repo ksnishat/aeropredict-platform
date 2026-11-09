@@ -21,7 +21,11 @@
 
 The system is built on the NASA C-MAPSS dataset and orchestrates the entire lifecycle—from data ingestion to technician reporting—using Apache Airflow, MLflow, and Docker.
 
-## Key Features
+---
+
+**At a glance** — MAE **9.51** cycles on the full FD001 test set · 208 unit tests · 13 CI jobs · LSTM + ChromaDB RAG + local LLM
+
+### What it does
 
 - **Deep Learning Forecasting:** A custom LSTM (Long Short-Term Memory) network trained on multivariate C-MAPSS sensor trajectories to predict RUL using an asymmetric safety-first loss (MSE with a higher penalty for late/under-estimated predictions), with fallback baseline when model is unavailable.
 - **GenAI Diagnostics (RAG):** A ChromaDB vector index over a turbofan maintenance reference, retrieved per prediction and passed to a local LLM (via Ollama) to generate maintenance recommendations. The API includes a deterministic template fallback when the LLM is unavailable.
@@ -31,21 +35,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 - **Production Ready:** Kubernetes and Helm charts for scalable deployment on any cloud infrastructure.
 - **CI/CD Pipeline:** GitHub Actions for automated testing, building, and deployment.
 
-
-### Recent Improvements (2026)
-🔧 **Makefile** — Standardized commands: `make test`, `make lint`, `make docker-up`, `make k8s-deploy`
-📦 **uv + pyproject.toml** — `uv.lock` is the install source; `uv sync --locked` fails if the lock drifts from `pyproject.toml`
-🔒 **Pre-commit hooks** — Ruff, mypy, black, trailing whitespace, YAML validation
-⚡ **PyTorch Lightning** — Refactored LSTM training with Lightning for cleaner code, checkpointing, logging
-🚀 **BentoML Serving** — Production model serving with BentoML, batch predictions, health checks
-☁️ **Terraform IaC** — Azure infrastructure as code (AKS, PostgreSQL, Redis, monitoring), `fmt`-clean and `validate`-checked in CI
-📊 **RAG retrieval evaluation** — A labelled question set scores `recall@k`, MRR and `hit@1` against the Chroma index; CI gates on `recall@4 >= 0.8`
-🔒 **11-job CI** — Python 3.10 + 3.11 matrix, Bandit, pip-audit with a documented allowlist, Trivy SARIF, mypy, Terraform validate, Docker image build-and-serve, RAG eval
-⚡ **Non-blocking LLM calls** — the report path runs in a worker thread, so a 50-second generation no longer stalls the event loop
-🐛 **Ollama tag matching** — a bare model name (`llama3.2`) never string-matched the pulled tag (`llama3.2:latest`), so a correctly configured model was reported missing
-🖥️ **Dashboard runs on the host** — the Streamlit UI hardcoded the compose DNS name `http://fastapi:8000`, so every request failed outside a container. `API_URL` is now read from the environment with a localhost default, and `start_all_stacks.sh` launches it on :8501
-
-## Architecture
+### Architecture
 
 The system follows a microservices architecture orchestrated by Docker Compose and deployable to Kubernetes.
 
@@ -78,9 +68,6 @@ flowchart LR
     class Prom,Graf observe
     class EVAL,CI,IMG gate
 ```
-
-### Request path
-
 The LLM call is the slow part — roughly 50 seconds on CPU. It runs in a worker
 thread so it cannot stall the event loop, which is what keeps `/` responsive
 while a report is generating.
@@ -107,36 +94,7 @@ sequenceDiagram
     A-->>C: rul, risk_level, report, source
 ```
 
-## Professional Feature Table
-
-| Feature | Description | Business Value | German Industry Relevance |
-|---------|-------------|----------------|---------------------------|
-| **Predictive Maintenance** | LSTM-based RUL prediction with asymmetric safety-first loss | Reduces unplanned downtime by up to 40% | Aligns with Industrie 4.0 predictive maintenance initiatives |
-| **GenAI-Powered Reports** | ChromaDB retrieval over a maintenance reference, then a local LLM generates the report (with template fallback) | Removes the blank-page step from maintenance documentation | Meets VDI/VDE standards for maintenance documentation |
-| **Real-time Monitoring** | Prometheus/Grafana stack with custom dashboards | Enables proactive maintenance scheduling | Supports DIN EN ISO 13379 condition monitoring standards |
-| **Microservices Architecture** | Containerized, scalable services | Easy deployment and horizontal scaling | Compatible with German Industrie 4.0 reference architecture (RAMI 4.0) |
-| **CI/CD Pipeline** | Automated testing and deployment via GitHub Actions | Ensures code quality and rapid iteration | Supports DevOps practices valued in German automotive/aerospace |
-| **Template-Based Reports** | API generates diagnostic reports with graceful degradation | Reliable maintenance recommendations in degraded mode | Supports German language requirements in industrial settings |
-| **Security & Compliance** | Role-based access, audit logging, data encryption | Protects sensitive operational data | Complies with BSI standards and GDPR for industrial data |
-| **Edge Computing Ready** | Optimized for resource-constrained deployment | Enables factory-floor implementation | Supports Mittelstand (SME) digitalization initiatives |
-
-## Why This Matters for German Industry
-
-Germany's manufacturing sector, particularly aerospace and automotive industries, faces increasing pressure to improve equipment reliability while reducing operational costs. AeroPredict directly addresses these challenges by:
-
-1. **Supporting Industrie 4.0 Initiatives**: The platform embodies key Industrie 4.0 principles including vertical integration, real-time data analytics, and autonomous decision-making.
-
-2. **Addressing Skilled Labor Shortage**: With Germany facing a significant shortage of skilled maintenance technicians, the AI-powered diagnostic assistance helps bridge the knowledge gap.
-
-3. **Enhancing Safety Culture**: RUL predictions enable scheduled maintenance, aligning with Germany's stringent aviation safety standards (Luftfahrt-Bundesamt).
-
-4. **Reducing Maintenance Costs**: Predictive maintenance can reduce maintenance costs by 25-30% while increasing equipment availability by 10-20% (VDI 2893 guidelines).
-
-5. **Supporting Export Compliance**: For German manufacturers exporting globally, predictive maintenance ensures consistent equipment performance meeting international standards.
-
-6. **Promoting Sustainable Manufacturing**: By preventing catastrophic failures and optimizing maintenance schedules, the platform contributes to resource efficiency and waste reduction goals in Germany's sustainability agenda.
-
-## Verified Model Metrics
+### Verified results
 
 These numbers were reproduced from the code in this repository on a local
 NVIDIA RTX 3050 Ti (4 GB). Follow [Quickstart](#quickstart) to reproduce them.
@@ -167,9 +125,6 @@ evaluate_model(
 )
 "
 ```
-
-### Three bugs that made the model useless (and how they were fixed)
-
 The model originally predicted a near-constant RUL. Three independent defects
 compounded; all three are now fixed and covered by regression tests.
 
@@ -192,9 +147,6 @@ the model out-of-distribution inputs. Training now persists the fitted scaler
 `preprocess_for_inference()` helper.
 
 Fixing all three took test MAE from **53.70 → 9.51 cycles (5.6×)**.
-
-### Remaining limitation (honest disclosure)
-
 The LSTM is a single model with no ensembling or uncertainty quantification.
 Published state-of-the-art FD001 results reach MAE ≈ 8–10 cycles using
 ensembles or attention architectures, so there is still headroom. The next
@@ -202,521 +154,82 @@ tracked step is replacing the LSTM with a temporal-convolution or small
 Transformer encoder. This is documented rather than hidden so the metrics above
 are not overstated.
 
-## API endpoints
+### RAG, measured
 
-All endpoints except `/` and `/metrics` require the `X-API-Key` header when auth
-is enabled. Rate limits come from `src/ratelimit.py` and are configurable by
-environment variable.
+The maintenance report is retrieved from a ChromaDB index over a turbofan
+reference and written by a local LLM. Retrieval quality is scored against a
+labelled question set rather than assumed:
+
+| Metric | Value |
+|---|---|
+| `recall@4` | **1.000** (10 cases) |
+| MRR | 0.900 |
+| `hit@1` | 0.800 |
+
+CI gates on `recall@4 >= 0.8`. The full methodology, the two findings it
+produced, and the harness itself are in
+[docs/OPERATIONS.md § Measuring retrieval quality](./docs/OPERATIONS.md).
+
+
+### Quickstart
+
+```bash
+uv sync --extra dev                 # uv.lock is the install source
+uv run python -m src.train_model    # train the LSTM
+uv run uvicorn src.api:app --port 8000
+curl -X POST http://localhost:8000/predict \
+     -H "X-API-Key: demo-secret-key" \
+     -F "file=@engine_FD001.txt"     # last 50 cycles of one engine
+```
+
+Setup detail, dataset download, configuration and troubleshooting:
+**[docs/OPERATIONS.md](./docs/OPERATIONS.md)**.
+
+### Stack
+
+| Service | Port | | Service | Port |
+|---|---|---|---|---|
+| FastAPI | 8000 | | Prometheus | 9090 |
+| Streamlit UI | 8501 | | Grafana | 3001 |
+| MLflow | 5001 | | Airflow | 8080 |
+| MinIO | 9000 | | TLS proxy | 8443 |
+
+
+`start_all_stacks.sh` in the workspace root starts every service for all four projects; `verify_live_stack.sh` checks 32 endpoints.
+
+### API
+
+All endpoints except `/` and `/metrics` require `X-API-Key`. Full payloads and
+error codes: [docs/OPERATIONS.md](./docs/OPERATIONS.md).
 
 | Method | Path | Limit | Purpose |
 |--------|------|-------|---------|
-| `GET` | `/` | none | Health probe. Reports `model_loaded`, `rag_available`, `rag_model_warning`, `auth_enabled` |
-| `POST` | `/predict` | 60/min | Upload a C-MAPSS sensor file, get RUL + risk band. `?async_report=true` returns immediately with a `report_id` and generates the report in the background |
-| `GET` | `/reports/{report_id}` | 120/min | Poll a report started with `async_report=true`. Returns `404` for an unknown or evicted id, `pending` until the task finishes |
-| `GET` | `/drift` | 30/min | Population Stability Index between live readings and the training baseline |
-| `POST` | `/admin/reload-model` | 5/min | Reload the TorchScript checkpoint without restarting the process. Disabled unless explicitly enabled |
+| `GET` | `/` | none | Health: `model_loaded`, `rag_available`, `auth_enabled` |
+| `POST` | `/predict` | 60/min | Sensor CSV in, RUL + risk band out |
+| `GET` | `/reports/{id}` | 120/min | Poll a report started with `?async_report=true` |
+| `GET` | `/drift` | 30/min | Population Stability Index vs training baseline |
+| `POST` | `/admin/reload-model` | 5/min | Reload the checkpoint without a restart |
 | `GET` | `/metrics` | none | Prometheus exposition |
 
-## Security
+### Security
 
 | Control | Implementation |
-|---------|---------------|
-| API-key auth | `src/auth.py` — `X-API-Key` on `/predict`, `/drift`, `/admin/reload-model`. Off when `API_KEY` is unset. |
-| Constant-time comparison | `secrets.compare_digest`, so response timing does not leak the key length or prefix. |
-| TLS | `infrastructure/tls/` — nginx reverse proxy, TLSv1.2/1.3, `server_tokens off`, security headers. |
-| Upload limit | `src/uploads.py` — `Content-Length` rejected before the body is read; the bytes actually received are checked too. |
-| Health stays open | `/` and `/metrics` are unauthenticated so a load balancer and Prometheus can reach them. They expose no data. |
+|---|---|
+| Auth | `X-API-Key` via `secrets.compare_digest` (constant-time) |
+| TLS | nginx reverse proxy, TLSv1.2/1.3, `server_tokens off` |
+| Upload limits | `Content-Length` rejected before the body is read |
+| Rate limits | Per-endpoint, configurable, 429 on breach |
 
-### Enabling auth
+**Not in place:** RBAC, a secret manager, multi-node HA, a soak test. The
+systems are *production-shaped*, not production-grade.
 
-```bash
-export API_KEY="$(openssl rand -hex 32)"
-./run_stack.sh
-```
+### Tests and CI
 
-`run_stack.sh` defaults `API_KEY` to a demo value so the stack is secure by
-default. The key is part of the environment the watchdog restarts the API with,
-so it survives a crash — a key set only on the start command would be silently
-dropped.
-
-### Calling an authenticated endpoint
-
-```bash
-curl -H "X-API-Key: $API_KEY" -F "file=@sample.csv" http://localhost:8000/predict
-```
-
-### Over HTTPS
-
-```bash
-./infrastructure/tls/start_tls_proxy.sh
-curl -k -H "X-API-Key: $API_KEY" -F "file=@sample.csv" https://localhost:8443/predict
-```
-
-The certificate is self-signed, so `-k` is required with curl and a browser will
-warn. A real deployment would use a CA-issued certificate and terminate TLS at
-the load balancer.
-
-### Not in place
-
-No RBAC or per-user identity, no rate limiting, no secret manager (credentials
-are environment variables), and no audit log of who called `/admin/reload-model`.
+| | |
+|---|---|
+| Unit tests | **208** (8 integration tests run against the live stack) |
+| CI jobs | **13**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, RAG eval, README-count check |
 
 ---
 
-## Production readiness
-
-This is a **production-shaped** system, not a production-hardened one. The
-distinction matters, so here is exactly where it stands.
-
-### What is in place
-
-| Capability | Status |
-|-----------|--------|
-| End-to-end MLOps loop | Airflow retrains, MLflow tracks, the API hot-swaps weights without a restart |
-| Drift detection | PSI against a training-time baseline, exposed at `/drift` and as Prometheus gauges |
-| Alerting | 5 Prometheus rules per project, verified loading and evaluating |
-| Authentication | `X-API-Key` on `/predict`, `/drift` and `/admin/reload-model` when `API_KEY` is set |
-| TLS | nginx reverse proxy, TLSv1.2/1.3, security headers (`infrastructure/tls/`) |
-| Upload limits | 10 MiB default, enforced before the body is read (`MAX_UPLOAD_BYTES`) |
-| Self-healing | Watchdog restarts the API and MLflow if they crash; containers use `restart: unless-stopped` |
-| Tests | Unit + live integration suites, run in CI |
-| Load tested | `python3 load_test.py` measures p50/p95/p99 and throughput against the running API |
-
-### What is not in place
-
-| Gap | Why it matters |
-|-----|---------------|
-| **No multi-tenancy or RBAC** | One shared API key. No per-user identity, quotas or audit trail. |
-| **No secret management** | Credentials are environment variables with demo defaults. A deployment needs Vault, SOPS or a cloud secret store. |
-| **Single node, no HA** | One host, one worker process per API. No replication, no failover. |
-| **No sustained soak test** | Load figures are a 60-request burst, not a multi-hour run. |
-| **Drift thresholds not tuned** | 0.10 / 0.25 are the conventional PSI bands, not calibrated to this data. |
-| **No model rollback** | The reload endpoint swaps weights forward only. A bad model needs a manual revert. |
-
-### The honest one-line summary
-
-> "Production-shaped: the full MLOps loop, drift detection, alerting, auth, TLS
-> and self-healing are all in place and verified. Not production-hardened: no
-> RBAC, no secret manager, single node, and the load numbers are a burst rather
-> than a soak test."
-
----
-
-## Quickstart
-
-### Prerequisites
-
-- Docker + Docker Compose
-- Python 3.10 (conda recommended)
-- Ollama (optional — the API falls back to template-based reports without it)
-
-### 1. Get the dataset
-
-The dataset is **NASA C-MAPSS FD001**, published by the NASA Prognostics Center
-of Excellence. It is not committed here — it is ~4 MB of text and is freely
-redistributable, but keeping it out of git keeps the clone small.
-
-Download the FD001 files from any of these mirrors:
-
-- [NASA PCoE repository](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) — the original source
-- [Kaggle: NASA C-MAPSS](https://www.kaggle.com/datasets/bishalsarang/nasa-turbofan-engine-degradation-simulation-dataset) — same files, easier download
-
-You need three files: `train_FD001.txt`, `test_FD001.txt`, `RUL_FD001.txt`.
-
-```bash
-mkdir -p data/raw
-cp /path/to/train_FD001.txt /path/to/test_FD001.txt /path/to/RUL_FD001.txt data/raw/
-ls data/raw/   # train_FD001.txt  test_FD001.txt  RUL_FD001.txt
-```
-
-The training script resolves the path automatically — container mount first,
-then `data/raw/`, then the in-repo `CMAPSSData/` — so no arguments are needed.
-
-**Without the dataset** you can still run the API, the tests and the load test:
-the model checkpoint is committed, and the integration tests skip cleanly when
-the data is absent.
-
-### 2. Install dependencies
-
-```bash
-# uv reads pyproject.toml and installs the exact set pinned in uv.lock.
-# The CPU torch index is declared in [tool.uv] so no extra flags are needed.
-pip install uv
-uv sync --extra dev
-source .venv/bin/activate
-```
-
-### 3. Train the model
-
-```bash
-PYTHONPATH=src python src/train_model.py
-```
-
-Runs are logged to MLflow under the `Airflow_Automated_Training` experiment.
-The dataset path is resolved automatically (container mount, then the in-repo
-`CMAPSSData/`), so no arguments are needed on a host checkout.
-
-Every training parameter has a flag:
-
-```bash
-PYTHONPATH=src python src/train_model.py --help
-PYTHONPATH=src python src/train_model.py --epochs 30 --rul-cap 125 --model-dir models
-```
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `--epochs` | 50 | Maximum training epochs |
-| `--batch-size` | 32 | Training batch size |
-| `--learning-rate` | 0.001 | Adam learning rate |
-| `--hidden-size` | 50 | LSTM hidden state dimension |
-| `--num-layers` | 2 | Number of LSTM layers |
-| `--patience` | 10 | Early-stopping patience |
-| `--val-split` | 0.2 | Validation fraction |
-| `--data-path` | auto | C-MAPSS training file |
-| `--rul-cap` | 125 | Piecewise-linear RUL ceiling |
-| `--model-dir` | `models` | Export directory for the checkpoint, scaler and drift baseline |
-
-### 4. Export the TorchScript checkpoint for the API
-
-```bash
-mkdir -p models
-PYTHONPATH=src python -c "import torch; from train_model import train; m = train(data_path='data/raw/train_FD001.txt', epochs=30); m.eval(); torch.jit.save(torch.jit.trace(m, torch.rand(1,50,21)), 'models/lstm_best.pt')"
-```
-
-### 5. Start the full stack
-
-```bash
-docker compose up --build -d
-docker compose ps
-```
-
-### 6. Verify
-
-```bash
-curl http://localhost:8000/          # {"status":"healthy",...,"model_loaded":true}
-curl http://localhost:8000/metrics   # Prometheus metrics
-```
-
-## Running Tests
-
-```bash
-uv run --frozen --extra dev python -m pytest tests/ -v   # 208 passed, 8 deselected
-```
-
-The 8 skipped tests are integration tests that need the live docker stack. They
-are excluded from CI (which has no model checkpoint or dataset) and run against
-real services instead of an in-process `TestClient`:
-
-```bash
-./run_stack.sh
-LIVE_STACK=1 pytest tests/test_integration_live.py -v   # 8 passed
-```
-
-They assert the API returns a real prediction for a known engine, that
-Prometheus is actually scraping the API (not merely healthy), and that MLflow,
-Grafana and MinIO are reachable.
-
-## Screenshots
-
-Captured from the running stack, not mocked up.
-
-### Grafana — model diagnostics
-
-![AeroPredict Grafana dashboard](docs/screenshots/grafana-dashboard.png)
-
-### API — OpenAPI schema
-
-![AeroPredict Swagger UI](docs/screenshots/api-swagger.png)
-
-### Airflow — scheduled retraining
-
-![AeroPredict Airflow DAGs](docs/screenshots/airflow-dags.png)
-
-## Monitoring & Live Demo
-
-Two helper scripts at the repository root start the API plus Prometheus and
-Grafana for every project, and provision the dashboards:
-
-```bash
-./run_stack.sh                      # API + MLflow + MinIO + Prometheus + Grafana
-python3 provision_dashboards.py aeropredict   # datasource + dashboard
-./verify_stack.sh                    # 7 checks, exit 0 when all pass
-```
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **FastAPI (Swagger)** | http://localhost:8000/docs | — |
-| **MLflow** | http://localhost:5001 | — |
-| **Airflow** | http://localhost:8081 | `admin` / password printed on first start |
-| **Prometheus** | http://localhost:9090 | — |
-| **Grafana** | http://localhost:3001 | `admin` / `admin` |
-| **MinIO console** | http://localhost:9001 | `minioadmin` / `minioadmin` |
-
-### Exposed metrics
-
-| Metric | Type | Meaning |
-|--------|------|---------|
-| `aeropredict_predictions_total` | counter | Predictions served, labelled by `risk_level` |
-| `aeropredict_prediction_latency_seconds` | histogram | Inference latency |
-| `aeropredict_last_rul_value` | gauge | Most recent predicted RUL |
-| `aeropredict_model_loaded` | gauge | 1 when the trained model is used, 0 for the fallback |
-| `aeropredict_rag_available` | gauge | 1 when the ChromaDB index is ready, 0 when reports use the template |
-| `aeropredict_reports_total` | counter | Reports generated, labelled by `source` (`rag` / `template`) |
-| `aeropredict_feature_drift_psi` | gauge | PSI per sensor vs the training baseline |
-| `aeropredict_max_drift_psi` | gauge | Largest per-sensor PSI in the current window |
-
-### Drift detection
-
-`GET /drift` reports the Population Stability Index between live sensor readings
-and the distribution the model was trained on. The baseline is captured during
-training into `models/drift_baseline.json`.
-
-Two details matter for correctness:
-
-* The baseline is MinMax-scaled, so the API scales uploads with the same fitted
-  scaler before comparing. Comparing raw sensor values (hundreds) against a
-  scaled baseline (0-1) produced a spurious PSI of 13.8 for every feature.
-* A prediction is one engine's 50-cycle window, so the baseline stores one mean
-  per training window. Storing every row compared a narrow slice against the
-  full training mixture and inflated PSI.
-
-Six of the 21 FD001 sensors are constant, which collapses the quantile bins, so
-they are dropped from the baseline rather than reporting meaningless drift.
-
-Verified discrimination: a representative sample of windows gives mean PSI 0.19,
-all-healthy windows 2.83, all-degraded 8.33.
-
-### Airflow pipeline
-
-`aeropredict_continuous_learning` retrains the LSTM, hot-swaps the served model,
-then generates a maintenance report (retrain → reload → report), logging training
-metrics to MLflow:
-
-```bash
-airflow dags unpause aeropredict_continuous_learning
-airflow dags trigger aeropredict_continuous_learning
-```
-
-The reload step calls `POST /admin/reload-model`, which is disabled unless
-`ENABLE_MODEL_RELOAD=true`. Without it the retrained checkpoint would sit on disk
-while the running process kept serving the weights it loaded at startup — which
-is exactly what happened before: the DAG wrote to the `airflow_models` volume
-while the API read `aeropredict_models`, so "continuous learning" retrained a
-model that was never served.
-
-### Kubernetes (optional)
-
-```bash
-helm install aeropredict ./helm-chart
-# or
-kubectl apply -f k8s/
-```
-
-## Usage
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Airflow | http://localhost:8080 | `airflow / airflow` |
-| Streamlit UI | http://localhost:8501 | — |
-| Grafana | http://localhost:3000 | `admin / admin` |
-| MLflow | http://localhost:5000 | — |
-| FastAPI | http://localhost:8000 | — |
-| Prometheus | http://localhost:9090 | — |
-
-> **All four stacks at once:** the root `start_all_stacks.sh` starts the API,
-> MLflow, MinIO, Prometheus, Grafana, TLS proxy and this dashboard for every
-> project, then `verify_live_stack.sh` checks 32 endpoints. The ports in the
-> table above are the ones that script uses.
-
-Typical workflow:
-
-1. Start Airflow, unpause `aeropredict_continuous_learning`.
-2. Wait for `retrain_lstm_model` and `generate_maintenance_report` to succeed.
-3. Open the Streamlit UI, or POST a sensor CSV to `/predict`:
-
-```bash
-# /predict takes a multipart file upload, not a JSON body.
-# A single engine's rows work best: the API takes the last 50 cycles.
-awk '$1==100' Aircraft-Engine-Failure-Prediction-using-Deep-Learning-main/CMAPSSData/test_FD001.txt > /tmp/sample.csv
-curl -X POST http://localhost:8000/predict -F "file=@/tmp/sample.csv"
-# {"rul":20,"risk_level":"CRITICAL","maintenance_recommendation":"..."}
-# Engine 100's published RUL is 20 cycles.
-```
-
-> **Short histories.** The model consumes a fixed 50-cycle window. If you upload
-> fewer than 50 rows the API left-pads by repeating the first reading, so the
-> prediction is biased toward a healthier engine. Engine 1 of the FD001 test set
-> has only 31 observed cycles and returns 60 against a published RUL of 112 for
-> exactly this reason. Upload at least 50 cycles for a trustworthy number.
-
-## Configuration
-
-Endpoints are configurable so the code runs outside docker-compose:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow tracking server |
-| `MLFLOW_S3_ENDPOINT_URL` | `http://minio:9000` | Artifact store (MinIO) |
-| `MODEL_PATH` | `models/lstm_best.pt` | TorchScript checkpoint for the API |
-| `SCALER_PATH` | `models/scaler.joblib` | Feature scaler fitted during training |
-| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
-| `KNOWLEDGE_BASE_PATH` | `knowledge_base/turbofan_maintenance.txt` | RAG source document |
-| `CHROMA_PERSIST_DIR` | `data/chroma` | Persisted vector index location |
-| `CHROMA_COLLECTION` | `turbofan_maintenance` | ChromaDB collection name |
-| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-
-## Project Structure
-
-```plaintext
-aeropredict-platform/
-├── dags/
-│   └── training_pipeline.py    # Airflow DAG (retrain -> GenAI report)
-├── src/
-│   ├── api.py                  # FastAPI backend (RUL + diagnostics + /metrics)
-│   ├── app.py                  # Streamlit technician dashboard
-│   ├── data_preprocessing.py   # Per-engine sliding windows + scaling
-│   ├── train_model.py          # LSTM training + MLflow logging
-│   ├── rag_inference.py        # ChromaDB RAG + local LLM report generation
-│   ├── config.py               # Pydantic settings
-│   └── utils/logging_config.py # Structured JSON logging
-├── knowledge_base/
-│   └── turbofan_maintenance.txt # RAG source: degradation modes, RUL bands, actions
-├── tests/                      # 208 unit + 8 integration tests
-├── run_stack.sh                # Start API + MLflow + MinIO + Prometheus + Grafana
-├── verify_stack.sh             # 7 live-stack health checks
-├── infrastructure/             # Dockerfiles + Prometheus/Grafana configs
-├── data/                       # C-MAPSS datasets and the persisted Chroma index
-├── helm-chart/                 # Helm chart for Kubernetes
-├── k8s/                        # Kubernetes manifests
-├── terraform/                  # Infrastructure as code
-└── docker-compose.yml          # postgres, minio, mlflow, airflow, api, ui, monitoring
-```
-
-## RAG Maintenance Assistant
-
-`src/rag_inference.py` builds a **ChromaDB** vector index over
-`knowledge_base/turbofan_maintenance.txt` and retrieves the passages relevant to
-a specific RUL prediction before asking a local LLM to write the report.
-
-The API loads this index at startup and uses it for the
-`maintenance_recommendation` field of every `/predict` response. If the index or
-the LLM is unavailable the API still returns a report, but it is the
-deterministic template rather than a generated one, and
-`aeropredict_reports_total{source="template"}` climbs so the degradation is
-visible rather than silent.
-
-This replaced two earlier implementations. The first read the first five pages
-of a PDF and stuffed the raw text into the prompt: that was not retrieval, it
-sent the same fixed context for every prediction and could not cite which part
-of the reference supported a claim. The second built the index but never wired
-it to the API, so `/predict` returned one of two hardcoded strings while the
-README described retrieval.
-
-### How it works
-
-1. The reference is split with `RecursiveCharacterTextSplitter` (900 chars, 150
-   overlap). Section-divider rules are stripped first, because otherwise they
-   become their own chunks and dominate retrieval.
-2. Chunks are embedded with `all-MiniLM-L6-v2` and persisted to ChromaDB at
-   `data/chroma/` — built once, reused across runs.
-3. A query built from the predicted RUL retrieves the top 4 passages.
-4. The LLM answers **only** from those passages, in a fixed
-   urgency / mode / action / uncertainty structure.
-
-### Verified behaviour
-
-With the index built (13 chunks), a query for a 23-cycle RUL retrieves the RUL
-band table and the HPT degradation section — the two passages that actually
-answer the question:
-
-```
-score=0.7102 :: 'below 50 cycles requires an immediate inspection. SECTION 6: DIAGNOSTIC...'
-score=0.7362 :: 'the health index. A health index of 1.0 indicates a new engine; 0.0...'
-score=1.0499 :: 'because it directly affects core power extraction. Observable signature:...'
-score=1.0682 :: 'engine log. SECTION 7: REPORTING REQUIREMENTS...'
-```
-
-### Configuration
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `KNOWLEDGE_BASE_PATH` | `knowledge_base/turbofan_maintenance.txt` | Document to index |
-| `CHROMA_PERSIST_DIR` | `data/chroma` | Vector store location |
-| `CHROMA_COLLECTION` | `turbofan_maintenance` | Collection name |
-| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
-| `OLLAMA_MODEL` | `llama3.2` | Generation model |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama endpoint |
-
-To index your own reference instead:
-
-```bash
-KNOWLEDGE_BASE_PATH=/path/to/reference.txt python -m src.rag_inference
-```
-
-> **Hardware note:** a 4 GB GPU cannot hold a 26B model. Use a small model
-> (1B-3B) for responsive generation, or accept CPU-bound latency with a larger
-> one. The embedding model is small enough to run on CPU if the GPU is busy.
-
-### Measuring retrieval quality
-
-Retrieval that *runs* and retrieval that *finds the right passage* are different
-claims, and only the second one is testable. `src/rag_eval.py` scores the
-retriever against a labelled set of 10 questions. Each case names the section
-that should be retrieved and evidence tokens that must appear in the retrieved
-text — tokens chosen so a passage from the wrong section cannot satisfy them by
-accident.
-
-```bash
-uv run --frozen python src/rag_eval.py                  # report and gate
-uv run --frozen python src/rag_eval.py --json           # machine-readable
-uv run --frozen python src/rag_eval.py --min-recall 0.9  # stricter gate
-```
-
-Current result: `recall@4 = 1.000`, MRR 0.900, `hit@1` 0.800 across 10 cases.
-
-Retrieval metrics need only the embedding model and the index, so they run
-offline and deterministically and are gated in CI (`recall@4 >= 0.8`).
-Generation metrics are deliberately *not* gated: they need an LLM, a CI runner
-has none, and a faithfulness score that silently reports 0.0 when the model is
-absent is worse than no score.
-
-Two things the first run surfaced:
-
-- **Chunk 3 of 13 merges sections 3.3 and 3.4**, so a question about fan
-  efficiency loss retrieves a passage that also describes fan *flow* loss.
-  Section-aware chunking was tried as a fix and made recall **worse**
-  (1.000 → 0.900) by producing smaller chunks and losing surrounding context,
-  so it was reverted. The merged section is reported as a ranking weakness
-  rather than traded for recall.
-- **The metric itself had a bug.** The first version checked the wrong-section
-  tokens across all k passages, which flags a neighbouring section that is
-  harmless because the generator sees both. Only the top-ranked passage is
-  checked now.
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| **Ollama connection refused** | Ensure Ollama is running with `OLLAMA_HOST=0.0.0.0 ollama serve` and check firewall settings |
-| **RAG report is a template fallback** | The LLM was unreachable or the index failed to build. Check `ollama list` and that `knowledge_base/turbofan_maintenance.txt` exists |
-| **RAG responses are very slow** | A large Ollama model is spilling to CPU. Check `ollama ps` — if PROCESSOR shows a high CPU percentage, switch to a smaller model via `OLLAMA_MODEL` |
-| **`torch.OutOfMemoryError` while embedding** | The GPU is occupied. Set `CUDA_VISIBLE_DEVICES=""` to run the embedding model on CPU |
-| **MLflow UI not loading** | Verify MLflow service is healthy: `kubectl get pods` or `docker compose ps mlflow` |
-| **Model not loading in API** | Check that model files exist in PVC and that MLflow tracking URI is correct |
-| **High memory usage in Streamlit** | Reduce batch size in data preprocessing or increase container memory limits |
-| **Ingress TLS not working** | Ensure cert-manager is installed and ClusterIssuer is configured correctly |
-| **Pods crashing with OOMKill** | Increase resource limits in values.yaml or check for memory leaks in custom code |
-| **Database connection failed** | Verify PostgreSQL service is running and credentials in secrets are correct |
-| **Prometheus not scraping metrics** | Check that `/metrics` endpoint is exposed and ServiceMonitor is configured |
-| **Grafana shows "No data"** | The provisioning or dashboards directory is not mounted, or Grafana is not on the `mlops-stack` network so it cannot resolve `prom_<project>` | Run `python3 provision_dashboards.py` — it reports which of the two it is |
-| **Model returns a constant RUL** | Known limitation of the current LSTM — see [Known limitation](#known-limitation-honest-disclosure) |
-| **Airflow DAG fails at `retrain_lstm_model`** | Ensure `AEROPREDICT_SRC` points at the mounted `src/` directory and that MLflow is reachable from the container |
-
-## Author
-
-Developed by **Khaled Saifullah**.
-
-For collaboration, feature requests, or bug reports, please open an issue or contact the maintainer via the repository issue tracker.
-
-**Last Updated**: October 2026
+**Author** — Khaled Saifullah · [GitHub](https://github.com/ksnishat)
