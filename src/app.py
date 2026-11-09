@@ -1,9 +1,14 @@
+import os
+
 import pandas as pd
 import requests
 import streamlit as st
 
 # CONFIG
-API_URL = "http://fastapi:8000/predict"  # Docker service name 'fastapi'
+# Configurable so the dashboard runs both inside docker-compose (where the
+# service is "fastapi") and on the host (where it is localhost). Hardcoding the
+# compose name made the dashboard unusable outside a container.
+API_URL = os.getenv("API_URL", "http://localhost:8000/predict")
 
 st.set_page_config(page_title="NASA AeroPredict", layout="wide", page_icon="✈️")
 
