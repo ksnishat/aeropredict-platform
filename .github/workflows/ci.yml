@@ -342,13 +342,59 @@ jobs:
       - name: Verify README test counts
         run: uv run --frozen python .github/scripts/check_readme_counts.py
 
+  # ------------------------------------------------------- serve-image
+  # The demo stack and any real deployment use Dockerfile.serve, while the
+  # existing `image` job builds Dockerfile. Nothing built the serve image, so
+  # all four shipped broken: none of them listed slowapi, which ratelimit.py
+  # imports at module level, and every container died at startup with
+  # ModuleNotFoundError. This job builds the file that actually gets deployed
+  # and asserts it answers on /.
+  serve-image:
+    name: Serve image builds and serves
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: requirements-serve.txt matches uv.lock
+        run: python tools/gen_serve_requirements.py --check
+
+      - name: Build serve image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.serve
+          push: false
+          load: true
+          tags: serve-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container starts and serves
+        run: |
+          docker run -d --name serve-image -p 18010:8000 serve-image:latest
+          for _ in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:18010/; then
+              echo "Serve container answered on /"
+              docker rm -f serve-image >/dev/null 2>&1 || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Serve container did not answer on / within 120s"
+          docker logs serve-image || true
+          docker rm -f serve-image >/dev/null 2>&1 || true
+          exit 1
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts]
+    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts, serve-image]
     if: always()
     steps:
       - name: Report
@@ -360,6 +406,7 @@ jobs:
           echo "terraform: ${{ needs.terraform.result }}"
           echo "docs:      ${{ needs.docs.result }}"
           echo "readme:    ${{ needs.readme-counts.result }}"
+          echo "serve-img: ${{ needs.serve-image.result }}"
           echo "rag-eval:  ${{ needs.rag-eval.result }}"
           if [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.security.result }}" != "success" ] ||
@@ -368,7 +415,8 @@ jobs:
              [ "${{ needs.terraform.result }}" != "success" ] ||
              [ "${{ needs.docs.result }}" != "success" ] ||
              [ "${{ needs.rag-eval.result }}" != "success" ] ||
-             [ "${{ needs.readme-counts.result }}" != "success" ]; then
+             [ "${{ needs.readme-counts.result }}" != "success" ] ||
+             [ "${{ needs.serve-image.result }}" != "success" ]; then
             echo "One or more jobs failed."
             exit 1
           fi
