@@ -179,6 +179,16 @@ def build(root: Path) -> str:
     wanted: set[str] = set()
 
     # 1. Anything the serving code imports that is declared in pyproject.
+    #
+    #    The scan is a hint, not the source of truth. Some modules live in
+    #    gitignored directories (InfraLens keeps src/ai_models/ out of git
+    #    because it holds the weights), so a clean checkout sees fewer imports
+    #    than a developer machine and the generated file differed between the
+    #    two. That made --check fail in CI while passing locally.
+    #
+    #    So: take the union of what the scan finds AND every declared runtime
+    #    dependency that is not explicitly excluded. The exclusion list is what
+    #    keeps training-only packages out, and it is deterministic.
     for mod in imports:
         if mod in STDLIB_OK or mod in {"src", "auth", "ratelimit", "uploads", "retry",
                                         "versioning", "config", "data_preprocessing",
@@ -187,6 +197,10 @@ def build(root: Path) -> str:
         dist = IMPORT_TO_DIST.get(mod, mod).lower()
         if dist in declared:
             wanted.add(dist)
+
+    # Every declared dependency that is not excluded, so the result does not
+    # depend on which files happen to be present in the checkout.
+    wanted |= set(declared) - EXCLUDE
 
     # 2. Packages that are declared and needed but imported indirectly
     #    (uvicorn is started by CMD, python-multipart by FastAPI's form parser).
