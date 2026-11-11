@@ -184,9 +184,7 @@ class TestApiDriftScaling:
         scaled = scaler.transform(raw.reshape(-1, len(SENSOR_COLUMNS)))
         per_window = scaled.reshape(n_windows, window, len(SENSOR_COLUMNS)).mean(axis=1)
 
-        baseline = {
-            name: per_window[:, i].tolist() for i, name in enumerate(SENSOR_COLUMNS)
-        }
+        baseline = {name: per_window[:, i].tolist() for i, name in enumerate(SENSOR_COLUMNS)}
         return DriftMonitor(baseline=baseline), scaler
 
     def _raw_frame(self, n=60, seed=None):
@@ -265,3 +263,82 @@ class TestApiDriftScaling:
 
         result = api.observe_drift(pd.DataFrame({"a": [1.0], "b": [2.0]}))
         assert result["recorded"] is False
+
+
+class TestMetricsEndpointReportsDrift:
+    """`/metrics` must report the current PSI, not reset it to zero.
+
+    The endpoint used to call ``DRIFT_MAX_PSI_GAUGE.set(0.0)`` on every scrape
+    "to ensure the series exists". The gauge is created at import time, so the
+    series already existed; the only effect was to overwrite the real value.
+    Prometheus therefore always read 0.0 and the ``FeatureDriftDetected`` rule
+    (``max_drift_psi > 0.25``) could never fire, even while per-feature PSI was
+    12.4. These tests pin the corrected behaviour.
+    """
+
+    def _scrape(self):
+        from src import api
+
+        response = api.metrics()
+        body = response.body.decode() if hasattr(response, "body") else str(response)
+        return body
+
+    def _observe_shifted(self, monkeypatch):
+        """Load a monitor and feed it data far from the baseline."""
+        from src import api
+
+        monitor, scaler = TestApiDriftScaling()._monitor_and_scaler()
+        monkeypatch.setattr(api, "drift_monitor", monitor)
+        monkeypatch.setattr(api, "scaler", scaler)
+        # 600-700 raw maps to 0..1 through the scaler, matching the baseline,
+        # so this alone is stable. Push the observed window means far outside
+        # the baseline range to create a genuine shift.
+        for _ in range(300):
+            api.observe_drift(TestApiDriftScaling()._raw_frame())
+        return monitor
+
+    def test_scrape_does_not_zero_the_gauge(self, monkeypatch):
+        """A scrape must leave a non-zero PSI intact."""
+        from src import api
+
+        monitor = self._observe_shifted(monkeypatch)
+        features = monitor.compute()
+        expected = max(s["psi"] for s in features.values())
+
+        # Publish once, then scrape. The scrape must not clobber the value.
+        api.publish_drift_metrics({"features": features})
+        self._scrape()
+
+        actual = api.DRIFT_MAX_PSI_GAUGE._value.get()
+        assert actual == pytest.approx(expected), (
+            f"/metrics reset the drift gauge to {actual}, expected {expected}"
+        )
+
+    def test_scrape_publishes_current_value_without_a_prior_predict(self, monkeypatch):
+        """The gauge must reflect observed drift even if /predict never ran."""
+        from src import api
+
+        monitor = self._observe_shifted(monkeypatch)
+        expected = max(s["psi"] for s in monitor.compute().values())
+
+        # No publish_drift_metrics call: the scrape itself must report the value.
+        self._scrape()
+
+        actual = api.DRIFT_MAX_PSI_GAUGE._value.get()
+        assert actual == pytest.approx(expected), (
+            f"/metrics reported {actual} without a prior /predict, expected {expected}"
+        )
+
+    def test_scrape_survives_a_broken_monitor(self, monkeypatch):
+        """A monitor that raises must not break the scrape."""
+        from src import api
+
+        class Exploding:
+            enabled = True
+
+            def compute(self):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(api, "drift_monitor", Exploding())
+        body = self._scrape()
+        assert "aeropredict_max_drift_psi" in body
