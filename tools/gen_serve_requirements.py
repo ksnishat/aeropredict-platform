@@ -32,8 +32,9 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 HEADER = """\
 # GENERATED FILE -- do not edit by hand.

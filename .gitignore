@@ -45,7 +45,7 @@ data/knowledge_base/
 data/chroma/
 
 # --- Models (tracked with DVC) ---
-models/
+models/*
 serving/
 *.pth
 *.pt
@@ -110,3 +110,7 @@ crash.log
 # Generated TLS material: never commit a private key.
 infrastructure/tls/*.key
 infrastructure/tls/*.crt
+
+# Keep the placeholder so Dockerfile.serve can COPY the directory in a
+# fresh checkout, where the real weights are absent.
+!models/.gitkeep
