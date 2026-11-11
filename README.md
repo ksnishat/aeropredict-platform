@@ -23,7 +23,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ---
 
-**At a glance** — MAE **9.51** cycles on the full FD001 test set · 208 unit tests · 12 CI jobs · LSTM + ChromaDB RAG + local LLM
+**At a glance** — MAE **9.51** cycles on the full FD001 test set · 211 unit tests · 12 CI jobs · LSTM + ChromaDB RAG + local LLM
 
 ### What it does
 
@@ -227,7 +227,7 @@ systems are *production-shaped*, not production-grade.
 
 | | |
 |---|---|
-| Unit tests | **208** (8 integration tests run against the live stack) |
+| Unit tests | **211** (8 integration tests run against the live stack) |
 | CI jobs | **12**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, RAG eval, README-count check |
 
 ## Roadmap

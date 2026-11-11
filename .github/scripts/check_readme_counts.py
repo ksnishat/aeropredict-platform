@@ -45,8 +45,17 @@ COMMAND_CLAIM = re.compile(
 )
 
 # ``117 unit + 8 live integration tests`` and ``# 208 unit + 8 integration tests``
-PROSE_CLAIM = re.compile(
-    r"(\d+)\s+unit\s*\+\s*(\d+)\s+(?:live\s+)?integration\s+tests?"
+PROSE_CLAIM = re.compile(r"(\d+)\s+unit\s*\+\s*(\d+)\s+(?:live\s+)?integration\s+tests?")
+
+# ``208 unit tests`` in the "At a glance" line and ``| Unit tests | **208** |``
+# in the metrics table. These are the two most prominent claims in every README
+# and neither matched the patterns above, so the check passed while the numbers
+# drifted. The integration count is quoted in the same table row as
+# ``(8 integration tests run against the live stack)``.
+GLANCE_CLAIM = re.compile(r"(?P<count>\d+)\s+unit\s+tests?\b")
+TABLE_CLAIM = re.compile(
+    r"(?m)^\|\s*Unit tests\s*\|\s*\*\*(?P<count>\d+)\*\*"
+    r"(?:\s*\((?P<integration>\d+)\s+(?:live\s+)?integration\s+tests?[^)]*\))?"
 )
 
 
@@ -64,10 +73,18 @@ def collect_counts() -> tuple[int, int]:
     """
     run = subprocess.run(
         [
-            sys.executable, "-m", "pytest", "tests/",
-            "-q", "--disable-warnings", "-m", "not integration",
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/",
+            "-q",
+            "--disable-warnings",
+            "-m",
+            "not integration",
         ],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     )
     passed = re.search(r"(\d+)\s+passed", run.stdout)
     if not passed:
@@ -78,10 +95,19 @@ def collect_counts() -> tuple[int, int]:
 
     collected = subprocess.run(
         [
-            sys.executable, "-m", "pytest", "tests/",
-            "--collect-only", "-q", "--disable-warnings", "-m", "integration",
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/",
+            "--collect-only",
+            "-q",
+            "--disable-warnings",
+            "-m",
+            "integration",
         ],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     )
     m = re.search(r"(\d+)(?:/\d+)?\s+tests? collected", collected.stdout)
     if not m:
@@ -100,9 +126,7 @@ def check_file(path: Path, unit: int, integration: int, fix: bool) -> list[str]:
         claimed = int(m.group("count"))
         if claimed == unit:
             return m.group(0)
-        problems.append(
-            f"{path}: command comment claims {claimed} passed, suite collects {unit}"
-        )
+        problems.append(f"{path}: command comment claims {claimed} passed, suite collects {unit}")
         return f"{m.group('prefix')}{unit}{m.group('suffix')}"
 
     def replace_prose(m: re.Match) -> str:
@@ -113,16 +137,54 @@ def check_file(path: Path, unit: int, integration: int, fix: bool) -> list[str]:
             f"{path}: prose claims {claimed_unit} unit + {claimed_int} integration, "
             f"actual is {unit} + {integration}"
         )
-        return m.group(0).replace(
-            f"{claimed_unit} unit", f"{unit} unit", 1
-        ).replace(
-            f"{claimed_int} integration", f"{integration} integration", 1
-        ).replace(
-            f"{claimed_int} live integration", f"{integration} live integration", 1
+        return (
+            m.group(0)
+            .replace(f"{claimed_unit} unit", f"{unit} unit", 1)
+            .replace(f"{claimed_int} integration", f"{integration} integration", 1)
+            .replace(f"{claimed_int} live integration", f"{integration} live integration", 1)
         )
 
-    text = COMMAND_CLAIM.sub(replace_command, text)
-    text = PROSE_CLAIM.sub(replace_prose, text)
+    def replace_glance(m: re.Match) -> str:
+        claimed = int(m.group("count"))
+        if claimed == unit:
+            return m.group(0)
+        problems.append(f"{path}: 'at a glance' claims {claimed} unit tests, suite collects {unit}")
+        return m.group(0).replace(f"{claimed} unit", f"{unit} unit", 1)
+
+    def replace_table(m: re.Match) -> str:
+        claimed = int(m.group("count"))
+        claimed_int = m.group("integration")
+        if claimed == unit and (claimed_int is None or int(claimed_int) == integration):
+            return m.group(0)
+        problems.append(
+            f"{path}: 'Unit tests' row claims {claimed}"
+            + (f" + {claimed_int} integration" if claimed_int else "")
+            + f", actual is {unit} + {integration}"
+        )
+        out = m.group(0).replace(f"**{claimed}**", f"**{unit}**", 1)
+        if claimed_int is not None:
+            out = out.replace(f"{claimed_int} integration", f"{integration} integration", 1)
+        return out
+
+    # A pattern that matches nothing cannot fail, so a README whose wording
+    # changed would silently pass forever. That is exactly how the counts
+    # drifted 3-6x before this script existed. Require at least one match.
+    matched = 0
+    for pattern, repl in (
+        (COMMAND_CLAIM, replace_command),
+        (PROSE_CLAIM, replace_prose),
+        (GLANCE_CLAIM, replace_glance),
+        (TABLE_CLAIM, replace_table),
+    ):
+        text, n = pattern.subn(repl, text)
+        matched += n
+
+    if matched == 0:
+        problems.append(
+            f"{path}: no test-count claim matched. The README's wording changed "
+            "and this check is now a no-op; update the patterns in "
+            ".github/scripts/check_readme_counts.py."
+        )
 
     if fix and text != original:
         path.write_text(text, encoding="utf-8")
@@ -132,14 +194,17 @@ def check_file(path: Path, unit: int, integration: int, fix: bool) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Rewrite the counts in place instead of failing.",
     )
     args = parser.parse_args(argv)
 
     unit, integration = collect_counts()
-    print(f"pytest: {unit} non-integration tests (passed + skipped), "
-          f"{integration} integration collected")
+    print(
+        f"pytest: {unit} non-integration tests (passed + skipped), "
+        f"{integration} integration collected"
+    )
 
     readme = ROOT / "README.md"
     if not readme.exists():
