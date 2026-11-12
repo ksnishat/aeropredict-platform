@@ -58,10 +58,14 @@ spec:
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
+          {{- if .Values.persistence.enabled }}
           volumeMounts:
             - name: model-storage
               mountPath: /app/models
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
       volumes:
         - name: model-storage
           persistentVolumeClaim:
             claimName: {{ include "aeropredict.fullname" . }}-models-pvc
+      {{- end }}

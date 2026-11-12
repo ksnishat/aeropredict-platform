@@ -40,8 +40,12 @@ env:
   ENABLE_RAG: true
   ENABLE_METRICS: true
 
+# The serve image bakes the trained weights into /app/models. Mounting an
+# empty PVC over that path hides them and the API starts with no model, so
+# persistence is off by default. Enable it only when you supply weights
+# through the volume instead of the image.
 persistence:
-  enabled: true
+  enabled: false
   size: 10Gi
   accessMode: ReadWriteOnce
 
