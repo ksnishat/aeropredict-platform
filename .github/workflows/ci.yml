@@ -388,13 +388,80 @@ jobs:
           docker rm -f serve-image >/dev/null 2>&1 || true
           exit 1
 
+  # ------------------------------------------------------- helm deploy
+  # The serve-image job only asserts that the container answers on /. That is
+  # not enough: the chart mounted an empty PVC over /app/models and shadowed
+  # the baked-in weights, so the pod answered on / while model_loaded was
+  # false and /predict returned the variance fallback. This job installs the
+  # chart into a throwaway kind cluster and asserts the model actually loads.
+  helm-deploy:
+    name: Helm chart deploys and loads the model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build serve image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.serve
+          push: false
+          load: true
+          tags: serve-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ci
+          wait: 120s
+
+      - name: Load image into the cluster
+        run: kind load docker-image serve-image:latest --name ci
+
+      - name: Install the chart
+        run: |
+          helm install ci ./helm-chart \
+            --set image.repository=serve-image \
+            --set image.tag=latest \
+            --set image.pullPolicy=Never \
+            --set ingress.enabled=false \
+            --set hpa.enabled=false \
+            --set streamlit.enabled=false \
+            --wait --timeout 300s
+
+      - name: Assert the model loaded
+        run: |
+          kubectl port-forward svc/ci-aeropredict-api-service 18020:80 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            body=$(curl -sf http://127.0.0.1:18020/ 2>/dev/null || true)
+            if [ -n "$body" ]; then break; fi
+            sleep 2
+          done
+          echo "health: $body"
+          # The whole point of this job: a pod that answers on / but has no
+          # model is the failure mode the PVC mount introduced.
+          echo "$body" | grep -q '"model_loaded":true' || {
+            echo "::error::The deployed pod answered but model_loaded is not true."
+            echo "::error::The chart is hiding the baked-in weights, most likely with a volume mount over /app/models."
+            kubectl logs -n default deploy/ci-aeropredict-api --tail=40 || true
+            exit 1
+          }
+          echo "Model loaded in the cluster."
+
   # ------------------------------------------------------------ summary
   # Single required status check. Branch protection points at this job, so
   # adding or renaming a job above never silently drops a required check.
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts, serve-image]
+    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts, serve-image, helm-deploy]
     if: always()
     steps:
       - name: Report
@@ -407,6 +474,7 @@ jobs:
           echo "docs:      ${{ needs.docs.result }}"
           echo "readme:    ${{ needs.readme-counts.result }}"
           echo "serve-img: ${{ needs.serve-image.result }}"
+          echo "helm:      ${{ needs.helm-deploy.result }}"
           echo "rag-eval:  ${{ needs.rag-eval.result }}"
           if [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.security.result }}" != "success" ] ||
@@ -416,7 +484,8 @@ jobs:
              [ "${{ needs.docs.result }}" != "success" ] ||
              [ "${{ needs.rag-eval.result }}" != "success" ] ||
              [ "${{ needs.readme-counts.result }}" != "success" ] ||
-             [ "${{ needs.serve-image.result }}" != "success" ]; then
+             [ "${{ needs.serve-image.result }}" != "success" ] ||
+             [ "${{ needs.helm-deploy.result }}" != "success" ]; then
             echo "One or more jobs failed."
             exit 1
           fi

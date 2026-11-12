@@ -23,7 +23,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ---
 
-**At a glance** — MAE **9.51** cycles on the full FD001 test set · 211 unit tests · 12 CI jobs · LSTM + ChromaDB RAG + local LLM
+**At a glance** — MAE **9.51** cycles on the full FD001 test set · 211 unit tests · 13 CI jobs · LSTM + ChromaDB RAG + local LLM
 
 ### What it does
 
