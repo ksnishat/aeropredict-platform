@@ -111,6 +111,12 @@ crash.log
 infrastructure/tls/*.key
 infrastructure/tls/*.crt
 
-# Keep the placeholder so Dockerfile.serve can COPY the directory in a
-# fresh checkout, where the real weights are absent.
+# The trained weights ARE tracked. Dockerfile.serve COPYs models/, and a
+# fresh clone that only had .gitkeep built an image with no model, so the API
+# silently served a variance-derived baseline instead of the LSTM. The weights
+# are small (152 KB LSTM + 4 KB scaler), so tracking them is cheaper than
+# publishing a release and adding a download step to the build.
 !models/.gitkeep
+!models/lstm_best.pt
+!models/scaler.joblib
+!models/drift_baseline.json
