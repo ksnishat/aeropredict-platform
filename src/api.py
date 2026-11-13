@@ -31,7 +31,7 @@ from pydantic import BaseModel
 # Allow `python src/api.py` as well as `uvicorn src.api:app`.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from auth import auth_enabled, require_api_key
-from data_preprocessing import preprocess_for_inference
+from data_preprocessing import SENSOR_COLUMNS, preprocess_for_inference
 from ratelimit import ADMIN_LIMIT, DRIFT_LIMIT, PREDICT_LIMIT, READ_LIMIT, limiter
 from ratelimit import install as install_rate_limit
 from uploads import enforce_content_length, read_upload
@@ -520,7 +520,6 @@ def observe_drift(df: pd.DataFrame) -> dict:
         return {"enabled": True, "recorded": False, "reason": "no scaler loaded"}
 
     try:
-        from data_preprocessing import SENSOR_COLUMNS
 
         numeric = df.apply(pd.to_numeric, errors="coerce")
         present = [c for c in SENSOR_COLUMNS if c in numeric.columns]
@@ -556,6 +555,69 @@ def publish_drift_metrics(drift: dict) -> None:
     for feature, stats in drift["features"].items():
         DRIFT_PSI_GAUGE.labels(feature=feature).set(stats["psi"])
     DRIFT_MAX_PSI_GAUGE.set(max(s["psi"] for s in drift["features"].values()))
+
+
+@app.get("/predict/live/{engine_id}", dependencies=[Depends(require_api_key)])
+@limiter.limit(PREDICT_LIMIT)
+def predict_live(request: Request, engine_id: str):
+    """Predict RUL from the online feature store instead of an uploaded file.
+
+    The batch endpoint requires 50 cycles of CSV. An operating engine emits
+    readings continuously, so requiring an upload is the wrong contract: the
+    producer writes to Kafka, the consumer maintains a rolling window in Redis,
+    and this endpoint reads that window.
+
+    Returns 503 when the engine has no live window. Deliberately not a 500 and
+    deliberately not a fallback prediction: an engine with no data is a
+    different condition from a broken server, and inventing a number for it
+    would be the silent-fallback failure this project has already fixed twice.
+    """
+    import redis as redis_lib
+
+    from streaming import build_window, read_window
+
+    try:
+        client = redis_lib.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=503, detail=f"Feature store unreachable: {exc}"
+        ) from exc
+
+    window = read_window(client, str(engine_id))
+    if window is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"No live telemetry for engine {engine_id!r}. Start the producer "
+                "and consumer, or use POST /predict with an uploaded file."
+            ),
+        )
+
+    rows = window.get("rows") or []
+    if not rows:
+        raise HTTPException(
+            status_code=503, detail=f"Empty window for engine {engine_id!r}"
+        )
+
+    # Pad or trim exactly as the batch path does, so the model sees the same
+    # shape it was trained on.
+    rows = build_window(rows, window=50)
+    df = pd.DataFrame(rows, columns=SENSOR_COLUMNS)
+    rul = predict_rul_from_data(df)
+
+    return {
+        "engine_id": str(engine_id),
+        "rul": rul,
+        "risk_level": calculate_risk_level(rul),
+        "source": "streaming",
+        "window_cycles": len(rows),
+        "last_cycle": window.get("last_cycle"),
+        "window_age_seconds": round(time.time() - float(window.get("ts", 0)), 1),
+    }
 
 
 @app.get("/drift", dependencies=[Depends(require_api_key)])

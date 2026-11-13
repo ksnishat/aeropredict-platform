@@ -23,7 +23,7 @@ The system is built on the NASA C-MAPSS dataset and orchestrates the entire life
 
 ---
 
-**At a glance** — MAE **9.51** cycles on the full FD001 test set · 227 unit tests · 15 CI jobs · LSTM + ChromaDB RAG + local LLM
+**At a glance** — MAE **9.51** cycles on the full FD001 test set · 256 unit tests · 16 CI jobs · LSTM + ChromaDB RAG + local LLM
 
 ### What it does
 
@@ -206,10 +206,41 @@ error codes: [docs/OPERATIONS.md](./docs/OPERATIONS.md).
 |--------|------|-------|---------|
 | `GET` | `/` | none | Health: `model_loaded`, `rag_available`, `auth_enabled` |
 | `POST` | `/predict` | 60/min | Sensor CSV in, RUL + risk band out |
+| `GET` | `/predict/live/{engine_id}` | 60/min | RUL from the streaming feature store; 503 when the engine has no live window |
 | `GET` | `/reports/{id}` | 120/min | Poll a report started with `?async_report=true` |
 | `GET` | `/drift` | 30/min | Population Stability Index vs training baseline |
 | `POST` | `/admin/reload-model` | 5/min | Reload the checkpoint without a restart |
 | `GET` | `/metrics` | none | Prometheus exposition |
+
+### Streaming
+
+The batch endpoint requires 50 cycles of CSV. An operating engine emits readings
+continuously, so there is a second path:
+
+```
+producer  -> Kafka (KRaft, :9092) -> consumer -> Redis (:6379) -> GET /predict/live/{id}
+```
+
+```bash
+# Replay 60 cycles of engine 1 at 200 msg/s, then build the window
+python -m src.streaming_cli produce --engine 1 --limit 60 --rate 200 &
+python -m src.streaming_cli consume --max-messages 60
+python -m src.streaming_cli stats
+
+curl -H "X-API-Key: demo-secret-key" localhost:8000/predict/live/1
+```
+
+**The property that matters:** the streaming path computes identical features to
+the batch path for the same input. `tests/test_streaming.py::TestBatchParity`
+asserts this against `preprocess_for_inference` rather than against a
+hand-written expectation, because a divergence here is silent — the model still
+returns a number, it is just wrong. Verified end to end: engine 1, cycles 11–60
+returns **RUL 123** from both `POST /predict` and `GET /predict/live/1`.
+
+Redis stores the **raw** window, not a scaled tensor, so a scaler update cannot
+leave cached windows inconsistent. Every key carries a TTL: a stale window is
+worse than no window, because it would serve a prediction for an engine that
+stopped reporting.
 
 ### Security
 
@@ -227,7 +258,7 @@ systems are *production-shaped*, not production-grade.
 
 | | |
 |---|---|
-| Unit tests | **227** (8 integration tests run against the live stack) |
+| Unit tests | **256** (8 integration tests run against the live stack) |
 | CI jobs | **12**: 3.10 + 3.11 matrix, ruff, mypy, Bandit, pip-audit, Trivy SARIF, Terraform validate, Docker build-and-serve, RAG eval, README-count check |
 
 ## Roadmap

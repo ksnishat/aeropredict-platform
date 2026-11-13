@@ -231,6 +231,69 @@ services:
   # StatsD exporter — bridges Airflow's StatsD UDP metrics to Prometheus HTTP.
   # Airflow emits metrics to statsd_host:9125 (UDP). The exporter translates
   # them using statsd_mapping.yml and serves them at :9102/metrics for Prometheus
+  # ---------------------------------------------------------------- streaming
+  # Kafka in KRaft mode: no ZooKeeper. A single broker is enough for a
+  # portfolio and keeps the stack inside the RAM budget; a 3-broker cluster
+  # would add ~2 GB for no demonstrable benefit here.
+  #
+  # The dual listeners matter. PLAINTEXT://localhost:9094 is for clients on the
+  # host (the producer and consumer run as host processes, like the API), and
+  # PLAINTEXT://kafka:29092 is for anything inside the compose network. A
+  # single advertised listener would make one of the two unable to connect,
+  # because the broker hands the client the address it advertises.
+  #
+  # Port 9094, not the Kafka default 9092: 9092 is Rossmann's Prometheus port
+  # in the shared stack, and the collision only surfaced when the full stack was
+  # stopped and the port check failed.
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: aeropredict_kafka
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9094,CONTROLLER://:9093,INTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9094,INTERNAL://kafka:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: aeropredict-kraft-01
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9094 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - aeropredict-network
+
+  # Online feature store. The API reads the latest rolling window from here
+  # instead of requiring the client to upload 50 cycles of CSV.
+  redis:
+    image: redis:7-alpine
+    container_name: aeropredict_redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - aeropredict-network
+
   # to scrape. Without this service the AirflowDAGFailure alert rule has no
   # data to evaluate and silently never fires.
   statsd_exporter:
@@ -417,3 +480,4 @@ volumes:
   prometheus_data:
   airflow_logs:
   airflow_models:
+  kafka_data:
