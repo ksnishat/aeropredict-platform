@@ -318,6 +318,36 @@ jobs:
       - name: Evaluate retrieval
         run: uv run --frozen python src/rag_eval.py --min-recall 0.8
 
+  # ------------------------------------------------- rag-generation-eval
+  # Retrieval quality is deterministic and gated above. Generation quality
+  # needs a judge model, which a GitHub runner does not have. The job therefore
+  # runs the harness in skip mode: it proves the code path works and that the
+  # skip contract holds, without pretending to measure faithfulness.
+  #
+  # The real numbers are recorded by a manual run against local Ollama. A job
+  # that reported 0.0 because no model was present would be worse than no job.
+  rag-generation-eval:
+    name: RAG generation eval harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --python "3.11"
+
+      - name: Harness tests (no judge model needed)
+        run: uv run --frozen python -m pytest tests/test_rag_generation_eval.py -q
+
+      - name: Skip cleanly when no judge model is available
+        run: |
+          uv run --frozen python -m src.rag_generation_eval --skip-if-unavailable
+
   # ------------------------------------------------------------ readme-counts
   # The READMEs quoted test counts that had drifted by 3-6x without anything
   # noticing, because check_docs.py can only catch values already known to be
@@ -461,7 +491,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, readme-counts, serve-image, helm-deploy]
+    needs: [test, security, shell, yaml, docs, terraform, lockfile, rag-eval, rag-generation-eval, readme-counts, serve-image, helm-deploy]
     if: always()
     steps:
       - name: Report
@@ -476,6 +506,7 @@ jobs:
           echo "serve-img: ${{ needs.serve-image.result }}"
           echo "helm:      ${{ needs.helm-deploy.result }}"
           echo "rag-eval:  ${{ needs.rag-eval.result }}"
+          echo "rag-gen:   ${{ needs.rag-generation-eval.result }}"
           if [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.security.result }}" != "success" ] ||
              [ "${{ needs.shell.result }}" != "success" ] ||
@@ -483,6 +514,7 @@ jobs:
              [ "${{ needs.terraform.result }}" != "success" ] ||
              [ "${{ needs.docs.result }}" != "success" ] ||
              [ "${{ needs.rag-eval.result }}" != "success" ] ||
+             [ "${{ needs.rag-generation-eval.result }}" != "success" ] ||
              [ "${{ needs.readme-counts.result }}" != "success" ] ||
              [ "${{ needs.serve-image.result }}" != "success" ] ||
              [ "${{ needs.helm-deploy.result }}" != "success" ]; then

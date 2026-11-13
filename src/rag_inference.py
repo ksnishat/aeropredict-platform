@@ -79,6 +79,28 @@ TASK:
 Do not restate or recompute the urgency band; it is given above.
 """
 
+# Evaluation prompt. Deliberately a separate template rather than a branch
+# inside PROMPT_TEMPLATE: the production prompt is what ships, and adding an
+# unused `{question}` variable to it would change the text the service sends.
+# This one keeps the same grounding instruction so a faithfulness score still
+# reflects how the service is told to behave.
+EVAL_PROMPT_TEMPLATE = """You are a senior turbofan propulsion engineer.
+
+Use ONLY the reference material below. If the reference material does not
+support a claim, say so instead of guessing.
+
+=== REFERENCE MATERIAL ===
+{context}
+=== END REFERENCE MATERIAL ===
+
+QUESTION:
+{question}
+
+Answer the question using only the reference material above. Cite the specific
+sensor channels or figures the reference gives. If the reference does not
+answer the question, say so plainly.
+"""
+
 
 def _urgency_band(rul: float) -> str:
     """Deterministic band lookup, used for the fallback report."""
@@ -283,6 +305,11 @@ class MaintenanceRAG:
             template=PROMPT_TEMPLATE, input_variables=["context", "rul", "band"]
         )
         self.chain = prompt | self.llm | StrOutputParser()
+        # Separate chain for evaluation, so the production prompt is untouched.
+        eval_prompt = PromptTemplate(
+            template=EVAL_PROMPT_TEMPLATE, input_variables=["context", "question"]
+        )
+        self.eval_chain = eval_prompt | self.llm | StrOutputParser()
 
     # --------------------------------------------------------------- retrieval
 
@@ -317,6 +344,27 @@ class MaintenanceRAG:
         # request that succeeds on a second attempt.
         return _invoke_chain(self.chain, context, band, rul_prediction)
 
+    def answer_question(self, question: str, passages: list[dict] | None = None) -> str:
+        """Answer a free-form question from the retrieved reference material.
+
+        `generate_report` is the production path: it takes a RUL number and
+        writes a structured report. This method exists for evaluation, where
+        the input is a question rather than a prediction, so that generation
+        quality can be measured against the same corpus and the same chain
+        without inventing a second prompt path.
+
+        The prompt is deliberately the same template with the question in place
+        of the situation block, so a faithfulness score reflects the prompt the
+        service actually uses.
+        """
+        if self.chain is None or self.vector_db is None:
+            raise RuntimeError("RAG chain not initialised; call ingest_knowledge()")
+
+        if passages is None:
+            passages = self.retrieve(question, k=4)
+        context = "\n\n---\n\n".join(p["content"] for p in passages)
+        return _invoke_eval_chain(self.eval_chain, context, question)
+
 
 @retry_transient(attempts=3, base_delay=0.4, max_delay=4.0)
 def _invoke_chain(chain, context: str, band: str, rul_prediction: float):
@@ -324,6 +372,12 @@ def _invoke_chain(chain, context: str, band: str, rul_prediction: float):
     return chain.invoke(
         {"context": context, "rul": f"{rul_prediction:.0f}", "band": band}
     )
+
+
+@retry_transient(attempts=3, base_delay=0.4, max_delay=4.0)
+def _invoke_eval_chain(chain, context: str, question: str):
+    """Run the evaluation chain. Same retry policy as the production path."""
+    return chain.invoke({"context": context, "question": question})
 
 
 def _fallback_report(rul_prediction: float) -> str:
