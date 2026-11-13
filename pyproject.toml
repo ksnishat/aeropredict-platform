@@ -50,6 +50,11 @@ dependencies = [
     "langchain-core>=0.2.0",
     "python-json-logger",
     "packaging",
+    # Streaming feature pipeline: Kafka client and the online feature store.
+    # Both are imported by src/streaming.py, so they must be declared or a
+    # clean install fails at import time.
+    "kafka-python-ng>=2.2.0",
+    "redis>=5.0.0",
     "pysqlite3-binary; python_version < '3.9'",
     "apache-airflow-providers-apache-spark",
     "apache-airflow-providers-amazon",
