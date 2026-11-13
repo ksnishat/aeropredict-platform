@@ -10,7 +10,10 @@ model (DeepEval running against a local Ollama model):
 * **Faithfulness** — is every claim in the answer supported by the retrieved
   context? A report that invents a torque figure or a part number is unfaithful
   even if it reads well.
-* **Answer relevancy** — does the answer address the question that was asked?
+
+Answer relevancy is deliberately not reported. DeepEval's implementation
+inverts on short answers and does not discriminate relevance at all with a
+small local judge; see `score_case` for the measurements.
 
 Why DeepEval and not Ragas: Ragas pins `tenacity<9`, which would downgrade the
 9.2.1 already installed and reintroduce the exact incompatibility documented in
@@ -33,8 +36,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # --------------------------------------------------------------------- config
@@ -42,15 +46,11 @@ from pathlib import Path
 DEFAULT_MODEL = os.environ.get("JUDGE_MODEL", "llama3.2")
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 DEFAULT_MIN_FAITHFULNESS = 0.85
-DEFAULT_MIN_RELEVANCY = 0.80
 
-# DeepEval computes a per-attempt timeout from the model's context window, which
-# for a small local model lands around 88 s. A 3B model on CPU can exceed that
-# on a long context, and the failure surfaces as a TimeoutError rather than a
-# low score -- which would look like a quality problem when it is a throughput
-# problem. Raise it unless the caller has set it explicitly.
-os.environ.setdefault("DEEPEVAL_PER_ATTEMPT_TIMEOUT_SECONDS_OVERRIDE", "300")
-
+# Fraction of a claim's content tokens that must appear in the retrieved
+# context for the claim to count as supported. 0.6 allows paraphrase while
+# still failing an invented figure or channel name.
+SUPPORT_THRESHOLD = 0.6
 
 @dataclass
 class GenerationScore:
@@ -61,6 +61,7 @@ class GenerationScore:
     faithfulness: float | None
     relevancy: float | None
     error: str | None = None
+    unsupported: list[str] = field(default_factory=list)
 
     @property
     def scored(self) -> bool:
@@ -111,49 +112,103 @@ def _judge_available(base_url: str, model: str) -> tuple[bool, str]:
 
 # ------------------------------------------------------------------- scoring
 
+# DeepEval was tried first and removed. Both of its metrics failed against a
+# local llama3.2 judge in ways that would have produced a confident, wrong
+# number:
+#
+#   AnswerRelevancy scored a directly relevant one-line answer 0.0, with the
+#   reason "there are no irrelevant statements in the actual output, making it
+#   impossible to calculate a higher score". It scored a fabricated answer 0.0
+#   too, so it could not separate the two.
+#
+#   Faithfulness scored 0.0 for *everything* -- a verbatim quote from the
+#   context, a paraphrased correct answer, and a fabricated claim all returned
+#   exactly 0.0 with the reason "there are no contradictions in the actual
+#   output". The judge model itself was fine: asked the same question directly
+#   it replied {"unsupported": []} correctly. The defect was in the metric's
+#   prompt parsing, not the model.
+#
+# A metric that returns 0.0 regardless of input is indistinguishable from a
+# broken system, and a 0.0 that looks like a measurement is worse than no
+# measurement. The replacement below is deterministic and has controls that
+# fail if it stops discriminating.
+
+# Trailing punctuation must not become part of a token: "wash." and "wash"
+# are the same word, and treating them as different made a correct
+# paraphrase score 0.0 while the verbatim quote scored 1.0.
+_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_\-]*")
+
+
+def _sentences(answer: str) -> list[str]:
+    """Split an answer into bullet- or sentence-sized claims."""
+    parts = re.split(r"(?:\n\s*(?:[-*\u2022]|\d+\.)\s+|(?<=[.!?])\s+)", answer)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _content_tokens(text: str) -> set[str]:
+    """Lowercase word tokens with stopwords removed.
+
+    Stopwords are dropped so that a claim is judged on its content, not on
+    "the", "is" and "of" matching the context by accident.
+    """
+    return {t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS and len(t) > 2}
+
+
+_STOPWORDS = {
+    "the", "and", "for", "are", "was", "were", "with", "that", "this", "from",
+    "have", "has", "had", "not", "but", "any", "all", "can", "may", "must",
+    "should", "which", "what", "when", "where", "who", "how", "its", "their",
+    "there", "these", "those", "been", "being", "does", "did", "will", "would",
+    "could", "into", "than", "then", "also", "such", "each", "more", "most",
+    "some", "only", "other", "over", "under", "about", "after", "before",
+    "according", "reference", "material", "section",
+}
+
 
 def score_case(judge, question: str, answer: str, context: str) -> GenerationScore:
-    """Score one generated answer with DeepEval's faithfulness and relevancy."""
-    from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric  # noqa: PLC0415
-    from deepeval.test_case import LLMTestCase  # noqa: PLC0415
+    """Score one answer for grounding, deterministically.
 
-    test_case = LLMTestCase(
-        input=question,
-        actual_output=answer,
-        retrieval_context=[context],
-    )
+    A claim is *supported* when at least `SUPPORT_THRESHOLD` of its content
+    tokens appear in the retrieved context. The answer's score is the fraction
+    of its claims that are supported.
 
-    try:
-        faith = FaithfulnessMetric(model=judge, threshold=0.0, include_reason=False)
-        faith.measure(test_case)
-        faithfulness = float(faith.score)
-    except Exception as exc:  # noqa: BLE001 - one bad case must not kill the run
+    This is deliberately simple and mechanical. It cannot judge whether an
+    inference is sound, but it reliably catches the failure mode that matters
+    for a maintenance report: a figure, channel name or part number that does
+    not appear in the retrieved reference. It is deterministic, so a score
+    change means a behaviour change rather than judge noise.
+
+    `judge` is accepted and unused so the call signature stays stable; the
+    docstring records why the model-based version was removed.
+    """
+    context_tokens = _content_tokens(context)
+    claims = _sentences(answer)
+    if not claims:
         return GenerationScore(
-            question=question,
-            answer=answer,
-            faithfulness=None,
-            relevancy=None,
-            error=f"faithfulness: {type(exc).__name__}: {exc}",
+            question=question, answer=answer, faithfulness=None, relevancy=None,
+            error="empty answer",
         )
 
-    try:
-        rel = AnswerRelevancyMetric(model=judge, threshold=0.0, include_reason=False)
-        rel.measure(test_case)
-        relevancy = float(rel.score)
-    except Exception as exc:  # noqa: BLE001
-        return GenerationScore(
-            question=question,
-            answer=answer,
-            faithfulness=faithfulness,
-            relevancy=None,
-            error=f"relevancy: {type(exc).__name__}: {exc}",
-        )
+    supported = 0
+    unsupported_claims: list[str] = []
+    for claim in claims:
+        tokens = _content_tokens(claim)
+        if not tokens:
+            # A claim with no content tokens carries nothing to verify.
+            supported += 1
+            continue
+        overlap = len(tokens & context_tokens) / len(tokens)
+        if overlap >= SUPPORT_THRESHOLD:
+            supported += 1
+        else:
+            unsupported_claims.append(claim[:120])
 
     return GenerationScore(
         question=question,
         answer=answer,
-        faithfulness=faithfulness,
-        relevancy=relevancy,
+        faithfulness=round(supported / len(claims), 4),
+        relevancy=None,
+        unsupported=unsupported_claims,
     )
 
 
@@ -191,20 +246,18 @@ def run_generation_eval(
 
     scored = [s for s in scores if s.scored]
     faith_vals = [s.faithfulness for s in scored if s.faithfulness is not None]
-    rel_vals = [s.relevancy for s in scored if s.relevancy is not None]
 
     return {
         "cases": len(scores),
         "scored": len(scored),
         "errors": len(scores) - len(scored),
         "faithfulness": round(sum(faith_vals) / len(faith_vals), 4) if faith_vals else None,
-        "answer_relevancy": round(sum(rel_vals) / len(rel_vals), 4) if rel_vals else None,
         "results": [
             {
                 "question": s.question,
                 "faithfulness": s.faithfulness,
-                "answer_relevancy": s.relevancy,
                 "answer_chars": len(s.answer),
+                "unsupported": s.unsupported,
                 "error": s.error,
             }
             for s in scores
@@ -233,12 +286,6 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=DEFAULT_MIN_FAITHFULNESS,
         help=f"Fail below this. Default {DEFAULT_MIN_FAITHFULNESS}.",
-    )
-    parser.add_argument(
-        "--min-relevancy",
-        type=float,
-        default=DEFAULT_MIN_RELEVANCY,
-        help=f"Fail below this. Default {DEFAULT_MIN_RELEVANCY}.",
     )
     parser.add_argument("--json", action="store_true")
     parser.add_argument(
@@ -273,9 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  scored             {summary['scored']}")
         print(f"  errors             {summary['errors']}")
         faith = summary["faithfulness"]
-        rel = summary["answer_relevancy"]
         print(f"  faithfulness       {faith:.3f}" if faith is not None else "  faithfulness       n/a")
-        print(f"  answer relevancy   {rel:.3f}" if rel is not None else "  answer relevancy   n/a")
         bad = [r for r in summary["results"] if r["error"]]
         if bad:
             print("\nerrors:")
@@ -295,14 +340,6 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         failed = True
-    if summary["answer_relevancy"] is not None and summary["answer_relevancy"] < args.min_relevancy:
-        print(
-            f"FAIL: answer relevancy {summary['answer_relevancy']:.3f} "
-            f"< {args.min_relevancy}",
-            file=sys.stderr,
-        )
-        failed = True
-
     return 1 if failed else 0
 
 

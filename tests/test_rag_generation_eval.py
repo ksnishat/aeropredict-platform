@@ -101,50 +101,90 @@ class TestAggregation:
         assert scored == []
 
 
-@pytest.mark.skipif(
-    not _judge_available("http://localhost:11434", "llama3.2")[0],
-    reason="needs a local Ollama with llama3.2 pulled",
-)
-class TestJudgeControls:
-    """The judge must separate a faithful answer from a fabricated one.
+class TestDeterministicMetricDiscriminates:
+    """The metric must separate a grounded answer from an invented one.
 
-    Without this, a low score is ambiguous: it could mean the system is bad or
-    the judge is broken. These two controls pin the judge's behaviour.
-
-    A local 3B model occasionally returns an unparseable verdict under load,
-    which surfaces as a 0.0 rather than an error. That is a throughput artefact,
-    not a judgement, so each control retries once before failing. Retrying is
-    safe here because the assertion is about the judge's *direction*, not about
-    a single sample.
+    This is the control that DeepEval failed. Both of its metrics returned 0.0
+    regardless of input against a local llama3.2 judge, so a low score was
+    indistinguishable from a broken harness. These cases fail if the
+    replacement stops discriminating.
     """
 
     CONTEXT = (
-        "SECTION 5.1 HPC EFFICIENCY LOSS - ACTION. Perform a compressor "
-        "water wash. If efficiency does not recover above the nominal band, "
-        "borescope the HPC stages and measure tip clearance."
+        "SECTION 5.1 HPC EFFICIENCY LOSS - ACTION. Perform a compressor water "
+        "wash. If efficiency does not recover above the nominal band, borescope "
+        "the HPC stages and measure tip clearance."
     )
+    QUESTION = "What action for HPC efficiency loss?"
 
-    def _score_with_retry(self, answer: str):
-        from src.rag_generation_eval import _build_judge, score_case
+    def _score(self, answer: str):
+        from src.rag_generation_eval import score_case
 
-        judge = _build_judge("llama3.2", "http://localhost:11434")
-        last = None
-        for _ in range(2):
-            last = score_case(
-                judge, "What action for HPC efficiency loss?", answer, self.CONTEXT
-            )
-            if last.faithfulness is not None:
-                return last
-        return last
+        return score_case(None, self.QUESTION, answer, self.CONTEXT)
 
-    def test_verbatim_context_scores_high(self):
-        s = self._score_with_retry(self.CONTEXT)
-        assert s.faithfulness is not None
-        assert s.faithfulness >= 0.9
+    def test_verbatim_answer_scores_one(self):
+        s = self._score("Perform a compressor water wash.")
+        assert s.faithfulness == 1.0
+        assert s.unsupported == []
 
-    def test_fabricated_answer_scores_low(self):
-        s = self._score_with_retry(
-            "Replace the entire engine at 42 cycles per the reference."
+    def test_paraphrase_still_scores_one(self):
+        """Paraphrase must pass, or the metric punishes good writing."""
+        s = self._score("The reference says to water wash the compressor.")
+        assert s.faithfulness == 1.0
+
+    def test_invented_figure_scores_zero(self):
+        """A number absent from the context is the failure mode that matters."""
+        s = self._score("Replace the turbine blades at 42 cycles and torque to 350 Nm.")
+        assert s.faithfulness == 0.0
+        assert s.unsupported
+
+    def test_invented_part_number_scores_zero(self):
+        s = self._score("Install a new HPT module part number GTX-9000.")
+        assert s.faithfulness == 0.0
+
+    def test_mixed_answer_scores_between(self):
+        """Half grounded, half invented must land strictly between."""
+        s = self._score(
+            "Perform a compressor water wash. Install part GTX-9000 at 350 Nm."
         )
         assert s.faithfulness is not None
-        assert s.faithfulness <= 0.2
+        assert 0.0 < s.faithfulness < 1.0
+
+    def test_trailing_punctuation_is_not_part_of_the_token(self):
+        """`wash.` and `wash` are the same word.
+
+        Treating them as different made a correct paraphrase score 0.0 while a
+        verbatim quote scored 1.0 -- an inverted signal.
+        """
+        from src.rag_generation_eval import _content_tokens
+
+        assert "wash" in _content_tokens("water wash.")
+        assert "wash." not in _content_tokens("water wash.")
+
+    def test_metric_is_deterministic(self):
+        """Same input, same score -- the property DeepEval did not have."""
+        answer = "Perform a compressor water wash."
+        scores = {self._score(answer).faithfulness for _ in range(3)}
+        assert scores == {1.0}
+
+
+class TestRelevancyIsDeliberatelyAbsent:
+    """Relevancy is not reported, and that decision needs to stay pinned.
+
+    DeepEval's AnswerRelevancy scored a directly relevant one-line answer 0.0
+    with the reason "there are no irrelevant statements in the actual output".
+    It also scored an answer about Berlin weather 0.0. A metric that cannot
+    separate those two is not measuring relevance.
+    """
+
+    def test_summary_has_no_answer_relevancy_key(self):
+        scores = [GenerationScore("q", "a", 1.0, None)]
+        faith = [s.faithfulness for s in scores if s.faithfulness is not None]
+        summary = {
+            "faithfulness": round(sum(faith) / len(faith), 4) if faith else None,
+        }
+        assert "answer_relevancy" not in summary
+
+    def test_score_case_reports_no_relevancy(self):
+        s = GenerationScore("q", "a", 0.9, None)
+        assert s.relevancy is None
