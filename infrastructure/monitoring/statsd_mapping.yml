@@ -1,0 +1,47 @@
+# StatsD -> Prometheus mapping for Apache Airflow 2.7.x
+#
+# Airflow emits metrics via StatsD. Without a mapping file the statsd_exporter
+# creates one flat metric per dotted name, which loses all label structure
+# (dag_id, state, task_id). This mapping reconstructs those labels so
+# Prometheus can filter by dag_id and state.
+#
+# Reference: https://airflow.apache.org/docs/apache-airflow/2.7.0/logging-monitoring/metrics.html
+#
+# Usage: mounted into prom/statsd-exporter at /statsd_mapping.yml
+
+mappings:
+  # DAG run duration by state (success / failed / running)
+  # Airflow emits: dagrun.{state}.{dag_id}
+  - match: "dagrun.*.(*)"
+    name: "airflow_dagrun_state"
+    labels:
+      state: "$1"
+      dag_id: "$2"
+
+  # DAG run failure counter (emitted on each failed run)
+  # Airflow emits: dagrun.failed.{dag_id}
+  - match: "dagrun.failed.(*)"
+    name: "airflow_dagrun_failed_total"
+    labels:
+      dag_id: "$1"
+
+  # Task instance duration
+  # Airflow emits: dag.{dag_id}.{task_id}.duration
+  - match: "dag.(*).(*).duration"
+    name: "airflow_task_duration_seconds"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  # Task failure counter
+  # Airflow emits: dag.{dag_id}.{task_id}.failed
+  - match: "dag.(*).(*).failed"
+    name: "airflow_task_failed_total"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  # Scheduler heartbeat (always present when scheduler is alive)
+  - match: "scheduler.heartbeat"
+    name: "airflow_scheduler_heartbeat_total"
+    labels: {}

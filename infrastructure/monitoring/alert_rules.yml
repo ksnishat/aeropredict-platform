@@ -32,17 +32,25 @@ groups:
           summary: "AeroPredict model not loaded"
           description: "The model is not loaded, predictions will fall back or fail"
 
-      # Airflow DAG failure
+      # Airflow DAG failure — requires the statsd_exporter service defined in
+      # docker-compose.yml, which translates Airflow StatsD UDP traffic into
+      # Prometheus metrics using infrastructure/monitoring/statsd_mapping.yml.
+      #
+      # Metric: airflow_dagrun_failed_total is a counter emitted by Airflow 2.7+
+      # via StatsD whenever a DAG run transitions to the "failed" state.
+      # The statsd_mapping.yml labels it with {dag_id}. Any non-zero rate over
+      # 5 minutes means at least one run failed in that window.
+      #
+      # Previous rule used `airflow_dag_run_state == 0` — a metric nothing
+      # exported (Airflow's web UI at :8080 is not a Prometheus endpoint).
       - alert: AirflowDAGFailure
-        # PromQL cannot compare an instant vector to a string literal. The
-        # state is exposed as a numeric gauge, so compare against 0.
-        expr: airflow_dag_run_state == 0
+        expr: increase(airflow_dagrun_failed_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Airflow DAG run failed"
-          description: "Dag {{ $labels.dag_id }} failed with {{ $labels.task_id }}"
+          summary: "Airflow DAG run failed in {{ $labels.dag_id }}"
+          description: "{{ $value }} failed run(s) detected for dag_id={{ $labels.dag_id }} in the last 5 minutes."
 
       # Feature drift. PSI is computed against the training baseline; 0.25 is
       # the conventional "significant shift" threshold. Without this rule the

@@ -23,9 +23,12 @@ scrape_configs:
     scrape_interval: 30s
 
   # Airflow (optional - if exposing metrics)
+  # StatsD exporter — translates Airflow StatsD UDP to Prometheus HTTP.
+  # The Airflow webserver at :8080 is a web UI, not a metrics endpoint.
+  # The correct path is statsd_exporter:9102/metrics (the exporter's HTTP port).
   - job_name: 'airflow'
     static_configs:
-      - targets: ['airflow:8080']
+      - targets: ['statsd_exporter:9102']
     metrics_path: '/metrics'
     scrape_interval: 30s
 

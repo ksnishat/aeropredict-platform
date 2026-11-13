@@ -109,6 +109,13 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      # StatsD metrics export — feeds the statsd_exporter service which
+      # Prometheus then scrapes. Without these vars the AirflowDAGFailure
+      # alert has no data to evaluate.
+      - AIRFLOW__METRICS__STATSD_ON=True
+      - AIRFLOW__METRICS__STATSD_HOST=statsd_exporter
+      - AIRFLOW__METRICS__STATSD_PORT=9125
+      - AIRFLOW__METRICS__STATSD_PREFIX=airflow
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
@@ -175,6 +182,13 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      # StatsD metrics export — feeds the statsd_exporter service which
+      # Prometheus then scrapes. Without these vars the AirflowDAGFailure
+      # alert has no data to evaluate.
+      - AIRFLOW__METRICS__STATSD_ON=True
+      - AIRFLOW__METRICS__STATSD_HOST=statsd_exporter
+      - AIRFLOW__METRICS__STATSD_PORT=9125
+      - AIRFLOW__METRICS__STATSD_PREFIX=airflow
       # MLflow runs on the host (port 5001), not as a compose service, so the
       # container reaches it through the Docker gateway rather than by name.
       - MLFLOW_TRACKING_URI=http://host.docker.internal:5001
@@ -214,6 +228,25 @@ services:
       - aeropredict-network
 
   # ==========================================
+  # StatsD exporter — bridges Airflow's StatsD UDP metrics to Prometheus HTTP.
+  # Airflow emits metrics to statsd_host:9125 (UDP). The exporter translates
+  # them using statsd_mapping.yml and serves them at :9102/metrics for Prometheus
+  # to scrape. Without this service the AirflowDAGFailure alert rule has no
+  # data to evaluate and silently never fires.
+  statsd_exporter:
+    image: prom/statsd-exporter:v0.26.1
+    container_name: aeropredict_statsd_exporter
+    ports:
+      - "9125:9125/udp"   # StatsD ingress from Airflow
+      - "9102:9102"       # Prometheus scrape endpoint
+    command:
+      - "--statsd.mapping-config=/statsd_mapping.yml"
+    volumes:
+      - ./infrastructure/monitoring/statsd_mapping.yml:/statsd_mapping.yml:ro
+    restart: unless-stopped
+    networks:
+      - aeropredict-network
+
   # 5. MONITORING STACK (Grafana + Prometheus)
   # ==========================================
   prometheus:
