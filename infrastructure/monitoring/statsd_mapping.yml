@@ -5,43 +5,53 @@
 # (dag_id, state, task_id). This mapping reconstructs those labels so
 # Prometheus can filter by dag_id and state.
 #
-# Reference: https://airflow.apache.org/docs/apache-airflow/2.7.0/logging-monitoring/metrics.html
+# Two things are easy to get wrong here, and both were verified against a real
+# prom/statsd-exporter:v0.26.1 before this file was committed:
 #
+#   1. The glob syntax is `*`, not `(*)`. `dagrun.*.(*)` is rejected at startup
+#      with "invalid match" and the exporter exits, so Prometheus scrapes
+#      nothing and the alert silently has no data.
+#
+#   2. AIRFLOW__METRICS__STATSD_PREFIX=airflow prepends "airflow." to every
+#      metric name, so every match pattern must start with `airflow.`.
+#      A pattern of `dagrun.*.*` matches nothing.
+#
+# Reference: https://airflow.apache.org/docs/apache-airflow/2.7.0/logging-monitoring/metrics.html
 # Usage: mounted into prom/statsd-exporter at /statsd_mapping.yml
 
 mappings:
-  # DAG run duration by state (success / failed / running)
-  # Airflow emits: dagrun.{state}.{dag_id}
-  - match: "dagrun.*.(*)"
+  # DAG run outcome by state (success / failed / running).
+  # Airflow emits: airflow.dagrun.{state}.{dag_id}
+  # Produces: airflow_dagrun_state{dag_id="...",state="failed"}
+  #
+  # This single rule covers both success and failure, so there is deliberately
+  # no separate `airflow_dagrun_failed_total`. An earlier version of this file
+  # had one, but the broader rule above matched first and shadowed it, so the
+  # metric never existed. The alert rule uses this metric with a state filter.
+  - match: "airflow.dagrun.*.*"
     name: "airflow_dagrun_state"
     labels:
       state: "$1"
       dag_id: "$2"
 
-  # DAG run failure counter (emitted on each failed run)
-  # Airflow emits: dagrun.failed.{dag_id}
-  - match: "dagrun.failed.(*)"
-    name: "airflow_dagrun_failed_total"
-    labels:
-      dag_id: "$1"
-
-  # Task instance duration
-  # Airflow emits: dag.{dag_id}.{task_id}.duration
-  - match: "dag.(*).(*).duration"
+  # Task instance duration.
+  # Airflow emits: airflow.dag.{dag_id}.{task_id}.duration
+  - match: "airflow.dag.*.*.duration"
     name: "airflow_task_duration_seconds"
     labels:
       dag_id: "$1"
       task_id: "$2"
 
-  # Task failure counter
-  # Airflow emits: dag.{dag_id}.{task_id}.failed
-  - match: "dag.(*).(*).failed"
+  # Task failure counter.
+  # Airflow emits: airflow.dag.{dag_id}.{task_id}.failed
+  - match: "airflow.dag.*.*.failed"
     name: "airflow_task_failed_total"
     labels:
       dag_id: "$1"
       task_id: "$2"
 
-  # Scheduler heartbeat (always present when scheduler is alive)
-  - match: "scheduler.heartbeat"
+  # Scheduler heartbeat. Always present while the scheduler is alive, so it is
+  # the cheapest way to alert on "the scheduler died".
+  - match: "airflow.scheduler.heartbeat"
     name: "airflow_scheduler_heartbeat_total"
     labels: {}

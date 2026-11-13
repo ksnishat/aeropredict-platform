@@ -44,7 +44,7 @@ groups:
       # Previous rule used `airflow_dag_run_state == 0` — a metric nothing
       # exported (Airflow's web UI at :8080 is not a Prometheus endpoint).
       - alert: AirflowDAGFailure
-        expr: increase(airflow_dagrun_failed_total[5m]) > 0
+        expr: increase(airflow_dagrun_state{state="failed"}[5m]) > 0
         for: 1m
         labels:
           severity: critical
